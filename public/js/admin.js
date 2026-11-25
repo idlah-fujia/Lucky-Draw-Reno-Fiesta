@@ -284,7 +284,12 @@
   function versionLabel(mode) {
     var base = hostFor(mode);
     if (!base) return '—';
-    try { return new URL(base).host; } catch (e) { return base; }
+    try {
+      var url = new URL(base, 'https://spin.local');
+      var path = url.pathname.replace(/\/$/, '');
+      if (!path || url.host === 'spin.local') return path || base;
+      return url.host + path;
+    } catch (e) { return base; }
   }
   function versionLink(mode, path) {
     var base = hostFor(mode);

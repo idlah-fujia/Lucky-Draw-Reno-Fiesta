@@ -20,6 +20,7 @@ import { adminCookieHeader, readSession, sessionToken } from './auth.js'
 import { assertUserChange, hashPassword, normalizeEmail, publicUser, verifyPassword } from './users.js'
 import { toCsv, versionLabel } from './schema.js'
 import { versionRoots } from './hosts.js'
+import { isSheetQuota } from './storage/sheets.js'
 import { GLOBAL_EVENT, QR_LIMITS, clampSize, envKioskQr, normalizeSaved, parsePosition, resolveKioskQr } from './kioskQr.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -60,6 +61,9 @@ export function createApp(deps) {
   const app = new Hono()
 
   app.onError((err, c) => {
+    if (isSheetQuota(err)) {
+      return c.json({ error: 'The sheet is busy. Wait a few seconds and try again.' }, 503)
+    }
     if (err instanceof HttpError || err.status) {
       return c.json({ error: err.message }, err.status || 400)
     }

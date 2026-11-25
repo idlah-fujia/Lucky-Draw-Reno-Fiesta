@@ -47,6 +47,9 @@ export class SheetsStore {
     this.kioskChain = Promise.resolve()
     this.userChain = Promise.resolve()
     this.eventChain = Promise.resolve()
+    this.prepared = new Set()
+    this.memo = new Map()
+    this.memoMs = 12_000
     this.loaded = false
     this.token = null
     this.tokenExp = 0
@@ -96,6 +99,20 @@ export class SheetsStore {
   }
 
   async sheets(url, options = {}) {
+    let last
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return await this.sheetsOnce(url, options)
+      } catch (error) {
+        last = error
+        if (!isSheetQuota(error) || attempt === 4) throw error
+        await sleep(300 * 2 ** attempt)
+      }
+    }
+    throw last
+  }
+
+  async sheetsOnce(url, options = {}) {
     const token = await this.accessToken()
     const response = await fetch(url, {
       ...options,
@@ -118,9 +135,50 @@ export class SheetsStore {
       if (response.status === 403) {
         throw new Error(`The sheet is not shared with ${this.email}. Share it as Editor and try again. (${message})`)
       }
-      throw new Error(`Google Sheets error ${response.status}: ${message}`)
+      const error = new Error(`Google Sheets error ${response.status}: ${message}`)
+      error.status = response.status
+      throw error
     }
     return json
+  }
+
+  remember(key, value) {
+    this.memo.set(key, { at: Date.now(), value: copyJson(value) })
+  }
+
+  recall(key) {
+    const hit = this.memo.get(key)
+    if (!hit || Date.now() - hit.at > this.memoMs) return null
+    return copyJson(hit.value)
+  }
+
+  async memoRead(key, load) {
+    const hit = this.recall(key)
+    if (hit) return hit
+    try {
+      const value = await load()
+      this.remember(key, value)
+      return copyJson(value)
+    } catch (error) {
+      const stale = this.memo.get(key)
+      if (stale && isSheetQuota(error)) return copyJson(stale.value)
+      throw error
+    }
+  }
+
+  async valuesFor(sheetName, columns) {
+    if (!this.prepared.has(sheetName)) {
+      const values = await this.ensureColumns(sheetName, columns)
+      this.prepared.add(sheetName)
+      return values
+    }
+    const values = await this.readGrid(sheetName)
+    const decision = reconcileHeader(values[0] || [], columns)
+    if (decision.action === 'ok') return values
+    this.prepared.delete(sheetName)
+    const fixed = await this.ensureColumns(sheetName, columns)
+    this.prepared.add(sheetName)
+    return fixed
   }
 
   async ensureTab(title) {
@@ -190,7 +248,7 @@ export class SheetsStore {
   }
 
   async reload() {
-    const values = await this.ensureColumns(SHEET, COLUMNS)
+    const values = await this.valuesFor(SHEET, COLUMNS)
     this.cache = []
     this.rowNumbers = new Map()
     values.slice(1).forEach((row, index) => {
@@ -285,7 +343,11 @@ export class SheetsStore {
   }
 
   async readKioskQr() {
-    const values = await this.ensureColumns(KIOSK_SHEET, KIOSK_COLUMNS)
+    return this.memoRead('kiosk', () => this.loadKioskQr())
+  }
+
+  async loadKioskQr() {
+    const values = await this.valuesFor(KIOSK_SHEET, KIOSK_COLUMNS)
     const map = {}
     for (const row of values.slice(1)) {
       const slug = row[0]
@@ -323,7 +385,11 @@ export class SheetsStore {
   }
 
   async readUsers() {
-    const values = await this.ensureColumns(USERS_SHEET, USER_COLUMNS)
+    return this.memoRead('users', () => this.loadUsers())
+  }
+
+  async loadUsers() {
+    const values = await this.valuesFor(USERS_SHEET, USER_COLUMNS)
     return values.slice(1).filter((row) => row[0] && row[0] !== USER_COLUMNS[0]).map((row) => ({
       id: row[0] || '',
       name: row[1] || '',
@@ -356,9 +422,10 @@ export class SheetsStore {
 
   async updateUsers(fn) {
     const run = this.userChain.then(async () => {
-      const list = await this.readUsers()
+      const list = await this.loadUsers()
       await fn(list)
       await this.writeUsers(list)
+      this.remember('users', list)
       return list
     })
     this.userChain = run.then(() => {}, () => {})
@@ -367,9 +434,10 @@ export class SheetsStore {
 
   async updateKioskQr(eventKey, value) {
     const run = this.kioskChain.then(async () => {
-      const map = await this.readKioskQr()
+      const map = await this.loadKioskQr()
       map[eventKey] = value
       await this.writeKioskQr(map)
+      this.remember('kiosk', map)
       return map
     })
     this.kioskChain = run.then(() => {}, () => {})
@@ -388,7 +456,11 @@ export class SheetsStore {
   }
 
   async listEvents() {
-    const values = await this.ensureColumns(EVENTS_SHEET, EVENT_COLUMNS)
+    return this.memoRead('events', () => this.loadEvents())
+  }
+
+  async loadEvents() {
+    const values = await this.valuesFor(EVENTS_SHEET, EVENT_COLUMNS)
     return values.slice(1).filter((row) => row[0] && row[0] !== EVENT_COLUMNS[0]).map((row) => ({
       slug: row[0],
       name: row[1] || row[0],
@@ -421,9 +493,10 @@ export class SheetsStore {
 
   async updateEvents(fn) {
     const run = this.eventChain.then(async () => {
-      const list = await this.listEvents()
+      const list = await this.loadEvents()
       await fn(list)
       await this.saveEvents(list)
+      this.remember('events', list)
       return list
     })
     this.eventChain = run.then(() => {}, () => {})
@@ -431,7 +504,11 @@ export class SheetsStore {
   }
 
   async readSettings() {
-    const values = await this.ensureColumns(SETTINGS_SHEET, SETTING_COLUMNS)
+    return this.memoRead('settings', () => this.loadSettings())
+  }
+
+  async loadSettings() {
+    const values = await this.valuesFor(SETTINGS_SHEET, SETTING_COLUMNS)
     const map = {}
     for (const row of values.slice(1)) {
       if (!row[0] || row[0] === SETTING_COLUMNS[0]) continue
@@ -462,14 +539,24 @@ export class SheetsStore {
 
   async setLiveSlug(slug) {
     const run = this.eventChain.then(async () => {
-      const map = await this.readSettings()
+      const map = await this.loadSettings()
       map.live_event = slug || ''
       await this.writeSettings(map)
+      this.remember('settings', map)
       return map.live_event
     })
     this.eventChain = run.then(() => {}, () => {})
     return run
   }
+}
+
+export function isSheetQuota(error) {
+  if (!error || error instanceof HttpError) return false
+  return error.status === 429 || /quota|rate limit|429/i.test(error.message || '')
+}
+
+function copyJson(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value))
 }
 
 function reissueCodes(list, fresh) {
