@@ -30,8 +30,8 @@ export function createEntry(list, entry) {
   return entry
 }
 
-export function saveDesigner(list, code, fields, nowIso, eventSlug) {
-  const entry = requireEventCode(list, code, eventSlug)
+export function saveDesigner(list, code, fields, nowIso, eventSlug, options) {
+  const entry = requireEventCode(list, code, eventSlug, options)
   if (entry.status === 'voided') {
     throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
   }
@@ -56,8 +56,8 @@ export function saveDesigner(list, code, fields, nowIso, eventSlug) {
   return entry
 }
 
-export function spinEntry(list, code, prize, nowIso, config, eventSlug) {
-  const entry = requireEventCode(list, code, eventSlug)
+export function spinEntry(list, code, prize, nowIso, config, eventSlug, options) {
+  const entry = requireEventCode(list, code, eventSlug, options)
   if (entry.status === 'voided') {
     throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
   }
@@ -119,19 +119,19 @@ export function reviewEntry(list, id, action, nowIso, actor = '') {
 }
 
 /** Server-side gate for the kiosk. The browser must not advance without this. */
-export function verifySpinCode(list, code, eventSlug, config) {
-  const entry = requireEventCode(list, code, eventSlug)
+export function verifySpinCode(list, code, eventSlug, config, options) {
+  const entry = requireEventCode(list, code, eventSlug, options)
   return attachSoldOut(kioskView(entry, config), list, config)
 }
 
-function requireEventCode(list, code, eventSlug) {
+function requireEventCode(list, code, eventSlug, { allowAnyEvent = false } = {}) {
   const event = String(eventSlug || '').trim()
-  if (!event) {
+  if (!event && !allowAnyEvent) {
     throw new HttpError(400, 'This screen is not tied to an event. Open the spin page with the event link.')
   }
   const entry = findCode(list, code)
   if (!entry) throw new HttpError(404, 'Code not recognised. Check the code on the homeowner’s phone.')
-  if (entry.event_slug !== event) {
+  if (event && entry.event_slug !== event) {
     throw new HttpError(409, `This code is for ${entry.event_name}, not this screen.`)
   }
   return entry

@@ -1,6 +1,6 @@
 (function () {
   var CREATE_EVENT_LABEL = 'Create Event';
-  var state = { entries: [], events: [], liveSlug: '', session: null, led: null, ledPosition: 'top-center', showAll: false };
+  var state = { entries: [], events: [], liveSlug: '', session: null, led: null, ledPosition: 'top-center', showAll: false, showAllEvents: false };
   var POS_LABELS = [
     ['top-left', 'Top left'], ['top-center', 'Top centre'], ['top-right', 'Top right'],
     ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom centre'], ['bottom-right', 'Bottom right']
@@ -413,34 +413,82 @@
     }).then(load).catch(function (error) { alert(error.message); btn.disabled = false; });
   });
 
+  function eventDates(event) {
+    if (!event.starts) return '';
+    if (!event.ends || event.ends === event.starts) return event.starts;
+    return event.starts + ' to ' + event.ends;
+  }
+
   function renderEventQrs() {
     var host = document.getElementById('eventQrList');
     var admin = state.session && state.session.role === 'admin';
-    var events = state.events.slice().sort(function (a, b) {
-      if (a.slug === state.liveSlug) return -1;
-      if (b.slug === state.liveSlug) return 1;
-      return 0;
-    });
-    host.innerHTML = events.map(function (event) {
-      var live = event.slug === state.liveSlug;
-      var slug = encodeURIComponent(event.slug);
+    var live = state.events.filter(function (event) { return event.slug === state.liveSlug; })[0] || null;
+    var others = state.events.filter(function (event) { return !live || event.slug !== live.slug; });
+    var afterUrl = (hostFor('after_event') || '/virtual').replace(/\/$/, '');
+    var liveCard = '';
+    if (live) {
+      var slug = encodeURIComponent(live.slug);
       var onSpin = versionLink('event_day', '/spin?event=' + slug);
       var onForm = versionLink('event_day', '/e/' + slug);
-      var afterForm = versionLink('after_event', '/e/' + slug);
-      var control = live
-        ? '<span class="live-now" data-testid="live-event">LIVE NOW</span>'
-        : (admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '');
-      return '<div class="event-qr' + (live ? ' live' : '') + '" data-testid="event-qr-row"><img alt="On-site QR for ' + esc(event.name) + '" src="/api/admin/qr/' + slug + '?mount=events">' +
-        '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b> ' + control +
-        '<p class="sub">' + (event.starts ? esc(event.starts) + (event.ends && event.ends !== event.starts ? ' to ' + esc(event.ends) : '') : '') + '</p>' +
+      liveCard = '<div class="event-qr live" data-testid="event-qr-row"><img alt="On-site QR for ' + esc(live.name) + '" src="/api/admin/qr/' + slug + '?mount=events">' +
+        '<div><b>' + esc(live.name) + (live.edition ? ' · ' + esc(live.edition) : '') + '</b> <span class="live-now" data-testid="live-event">LIVE NOW</span>' +
+        '<p class="sub">' + esc(eventDates(live)) + '</p>' +
         '<p><b>On-site.</b> <a href="' + esc(onSpin) + '">Big screen</a> · <a href="' + esc(onForm) + '">Phone form</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(onForm) + '</p>' +
-        '<p><b>After event.</b> <a href="' + esc(afterForm) + '">Phone form</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(afterForm) + '</p></div></div>';
-    }).join('');
+        '<p style="font-weight:800;word-break:break-all">' + esc(onForm) + '</p></div></div>';
+    }
+    var designer = '<div class="event-qr designer-link" data-testid="after-event-link">' +
+      '<img alt="QR for the after-event form" src="/api/admin/qr/after-event">' +
+      '<div><b>After-event link (for designers)</b>' +
+      '<p class="sub">One link for every event. Send this to interior designers.</p>' +
+      '<p style="font-weight:800;word-break:break-all" data-testid="after-event-url">' + esc(afterUrl) + '</p>' +
+      '<p><button class="mini" type="button" id="copyAfterEvent" data-url="' + esc(afterUrl) + '">Copy link</button></p></div></div>';
+    var compact = '';
+    if (others.length) {
+      var setBtn = admin ? '<button class="mini" type="button" id="setOtherLive">Set as live</button>' : '';
+      compact = '<div class="other-events" data-testid="other-events">' +
+        '<label class="fl"><span>Other events</span><select id="otherEventPick" aria-label="Other events">' +
+        others.map(function (event) {
+          return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '')) + '</option>';
+        }).join('') +
+        '</select></label>' + setBtn +
+        '<button class="mini" type="button" id="showAllEvents" data-testid="show-all-events">' + (state.showAllEvents ? 'Hide events' : 'Show all events') + '</button>' +
+        '<div id="allEvents"' + (state.showAllEvents ? '' : ' hidden') + '>' +
+        others.map(function (event) {
+          var action = admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '';
+          return '<div class="event-line"><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b><span>' + esc(eventDates(event)) + '</span>' + action + '</div>';
+        }).join('') +
+        '</div></div>';
+    }
+    host.innerHTML = liveCard + designer + compact;
   }
 
   document.getElementById('eventQrList').addEventListener('click', function (e) {
+    if (e.target.id === 'showAllEvents') {
+      state.showAllEvents = !state.showAllEvents;
+      renderEventQrs();
+      return;
+    }
+    if (e.target.id === 'setOtherLive') {
+      var pick = document.getElementById('otherEventPick');
+      if (!pick || !pick.value) return;
+      var chosen = pick.value;
+      state.liveSlug = chosen;
+      renderEventQrs();
+      api('/api/admin/live', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: chosen })
+      }).then(load).catch(function (error) { alert(error.message); });
+      return;
+    }
+    if (e.target.id === 'copyAfterEvent') {
+      var url = e.target.getAttribute('data-url') || '';
+      var button = e.target;
+      navigator.clipboard.writeText(url).then(function () {
+        button.textContent = 'Copied';
+      }).catch(function () { button.textContent = url; });
+      return;
+    }
     var btn = e.target.closest('button[data-live]');
     if (!btn) return;
     btn.disabled = true;

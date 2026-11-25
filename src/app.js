@@ -45,13 +45,30 @@ export function createApp(deps) {
     const spin = `${root}/spin?event=${encodeURIComponent(slug)}`
     return code ? `${spin}&code=${encodeURIComponent(code)}` : spin
   }
+  function afterEventFormUrl(c) {
+    return `${requestBaseUrl(c)}/virtual`
+  }
+  function afterEventSpinUrl(c, code) {
+    const root = `${requestBaseUrl(c)}/virtual/spin`
+    return code ? `${root}?code=${encodeURIComponent(code)}` : root
+  }
   function eventLinks(c, event, hint) {
-    const mode = eventMode(event, hintedMode(c, hint))
+    const requested = hintedMode(c, hint)
+    if (requested === 'after_event') {
+      return { mode: 'after_event', formUrl: afterEventFormUrl(c), spinUrl: afterEventSpinUrl(c) }
+    }
+    const mode = eventMode(event, requested)
+    if (mode === 'after_event') {
+      return { mode, formUrl: afterEventFormUrl(c), spinUrl: afterEventSpinUrl(c) }
+    }
     return {
       mode,
-      formUrl: linkFor(c, mode, event.slug, 'form'),
-      spinUrl: linkFor(c, mode, event.slug, 'spin')
+      formUrl: linkFor(c, 'event_day', event.slug, 'form'),
+      spinUrl: linkFor(c, 'event_day', event.slug, 'spin')
     }
+  }
+  function anyEventSpin(c, body) {
+    return modeFromMount(body?.mount) === 'after_event' && !String(body?.event || '').trim()
   }
   async function liveConfig() {
     const base = configOf()
@@ -212,7 +229,7 @@ export function createApp(deps) {
           updated_at: nowIso,
           verified_by: '',
           voided_by: '',
-          site_mode: eventMode(event, hintedMode(c, body.mount)),
+          site_mode: hintedMode(c, body.mount) === 'after_event' ? 'after_event' : eventMode(event, hintedMode(c, body.mount)),
           spam_at: '',
           spam_by: ''
         }
@@ -223,8 +240,8 @@ export function createApp(deps) {
       throw error
     }
 
-    const mode = eventMode(event, hintedMode(c, body.mount))
-    const spinUrl = linkFor(c, mode, event.slug, 'spin', mode === 'after_event' ? entry.code : '')
+    const mode = hintedMode(c, body.mount) === 'after_event' ? 'after_event' : eventMode(event, hintedMode(c, body.mount))
+    const spinUrl = mode === 'after_event' ? afterEventSpinUrl(c, entry.code) : linkFor(c, 'event_day', event.slug, 'spin')
     const mailed = await mailer.send(codeEmail({ entry, spinUrl, whatsapp: config.whatsapp, mode }))
     await store.transaction((list) => {
       const row = list.find((item) => item.id === entry.id)
@@ -251,7 +268,7 @@ export function createApp(deps) {
     const parsed = parseCode(body.code)
     if (parsed.error) throw new HttpError(400, parsed.error)
     const config = await liveConfig()
-    const view = await store.transaction((list) => verifySpinCode(list, parsed.code, body.event, config))
+    const view = await store.transaction((list) => verifySpinCode(list, parsed.code, body.event, config, { allowAnyEvent: anyEventSpin(c, body) }))
     return c.json(view)
   })
 
@@ -266,7 +283,7 @@ export function createApp(deps) {
       id_company: cleanText(body.id_company, { min: 2, max: 120, label: 'the interior design company' })
     }
     const config = await liveConfig()
-    const entry = await store.transaction((list) => saveDesigner(list, parsed.code, fields, new Date().toISOString(), body.event))
+    const entry = await store.transaction((list) => saveDesigner(list, parsed.code, fields, new Date().toISOString(), body.event, { allowAnyEvent: anyEventSpin(c, body) }))
     const list = await store.list()
     return c.json(attachSoldOut(kioskView(entry, config), list, config))
   })
@@ -289,7 +306,7 @@ export function createApp(deps) {
       // The store runs this alone: it reloads the sheet or file, checks the
       // code and the iPhone, then saves. The next spin cannot start until
       // that save has finished, so two spins cannot both take the iPhone.
-      const view = verifySpinCode(list, parsed.code, body.event, config)
+      const view = verifySpinCode(list, parsed.code, body.event, config, { allowAnyEvent: anyEventSpin(c, body) })
       const existing = list.find((row) => row.code === parsed.code)
       if (!view.canContinue) {
         if (existing.status === 'voided') {
@@ -307,12 +324,14 @@ export function createApp(deps) {
         throw new HttpError(409, 'The iPhone has been fully redeemed for this event.')
       }
       if (!prize) prize = pickPrize(config, sold)
-      return spinEntry(list, parsed.code, prize, new Date().toISOString(), config, body.event)
+      return spinEntry(list, parsed.code, prize, new Date().toISOString(), config, body.event, { allowAnyEvent: anyEventSpin(c, body) })
     }, { oncePerEventIds: oncePerEventIds(config) })
 
     let emailStatus = outcome.entry.result_email_status || ''
     if (!outcome.already) {
-      const spinUrl = linkFor(c, outcome.entry.site_mode || hintedMode(c), outcome.entry.event_slug, 'spin')
+      const spinUrl = outcome.entry.site_mode === 'after_event'
+        ? afterEventSpinUrl(c, outcome.entry.code)
+        : linkFor(c, 'event_day', outcome.entry.event_slug, 'spin')
       const messages = resultEmails({ entry: outcome.entry, spinUrl, whatsapp: config.whatsapp })
       const results = []
       for (const message of messages) results.push(await mailer.send(message))
@@ -603,8 +622,8 @@ export function createApp(deps) {
       event: asPublic(created, 'event_day'),
       formUrl: linkFor(c, 'event_day', slug, 'form'),
       spinUrl: linkFor(c, 'event_day', slug, 'spin'),
-      virtualFormUrl: linkFor(c, 'after_event', slug, 'form'),
-      virtualSpinUrl: linkFor(c, 'after_event', slug, 'spin'),
+      virtualFormUrl: afterEventFormUrl(c),
+      virtualSpinUrl: afterEventSpinUrl(c),
       label: CREATE_EVENT_LABEL
     })
   })
@@ -623,6 +642,9 @@ export function createApp(deps) {
   app.get('/api/admin/qr/:slug', async (c) => {
     const config = await liveConfig()
     const event = findEvent(config, c.req.param('slug'))
+    if (c.req.param('slug') === 'after-event') {
+      return qrPng(c, afterEventFormUrl(c), 'after-event.png', { dark: '#1B0F33', light: '#FFFFFF' })
+    }
     if (!event) throw new HttpError(404, 'Unknown event.')
     const forced = modeFromMount(c.req.query('mount'))
     const mode = forced || (event.mode ? eventMode(event) : 'event_day')
@@ -638,19 +660,15 @@ export function createApp(deps) {
     if (!event) return showForm(c)
     return c.redirect(`/events/spin?event=${encodeURIComponent(event.slug)}`, 302)
   })
-  app.get('/virtual', async (c) => {
-    const event = pickLive(await liveConfig())
-    if (!event) return showForm(c)
-    return c.redirect(`/virtual/e/${encodeURIComponent(event.slug)}`, 302)
-  })
+  app.get('/virtual', showForm)
   app.get('/events/spin', showSpin)
   app.get('/events/register', showForm)
   app.get('/events/e/:slug', showForm)
   app.get('/events/after/:slug', showForm)
   app.get('/virtual/spin', showSpin)
   app.get('/virtual/register', showForm)
-  app.get('/virtual/e/:slug', showForm)
-  app.get('/virtual/after/:slug', showForm)
+  app.get('/virtual/e/:slug', (c) => c.redirect('/virtual', 302))
+  app.get('/virtual/after/:slug', (c) => c.redirect('/virtual', 302))
   app.get('/register', (c) => c.redirect(`${prefixFor(fallbackMode())}/register`, 302))
   app.get('/spin', (c) => c.redirect(`/events/spin${new URL(c.req.url).search}`, 302))
   app.get('/e/:slug', async (c) => {
@@ -659,7 +677,7 @@ export function createApp(deps) {
     const mode = eventMode(event, fallbackMode())
     return c.redirect(`${prefixFor(mode)}/e/${encodeURIComponent(c.req.param('slug'))}`, 302)
   })
-  app.get('/after/:slug', (c) => c.redirect(`/virtual/e/${encodeURIComponent(c.req.param('slug'))}`, 302))
+  app.get('/after/:slug', (c) => c.redirect('/virtual', 302))
   app.get('/admin', (c) => c.html(readPage('admin.html'), 200, htmlHeaders))
 
   app.use('/css/*', serveStatic({ root: publicDir }))

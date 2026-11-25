@@ -138,10 +138,16 @@
   }
 
   function api(path, body) {
+    var payload = body || {}
+    if (path.indexOf('/api/spin/') === 0) {
+      payload = Object.assign({}, payload)
+      payload.mount = location.pathname.indexOf('/virtual') === 0 ? 'virtual' : 'events'
+      if (payload.mount === 'virtual') delete payload.event
+    }
     return fetch(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(20000)
     }).then(function (res) {
       return res.json().catch(function () { return { error: 'Something went wrong.' }; }).then(function (json) {

@@ -389,13 +389,13 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
   const display = await json(await app.request('/api/kiosk/display?event=reno-fiesta-nov-2026', { headers }))
   assert.equal(display.status, 200)
   assert.equal(display.body.event.slug, 'reno-fiesta-nov-2026')
-  assert.equal(display.body.formUrl, `${base}/virtual/e/reno-fiesta-nov-2026`)
+  assert.equal(display.body.formUrl, `${base}/virtual`)
   assert.equal(display.body.qr.size, fallback.size)
   assert.equal(display.body.qr.position, fallback.position)
 
   const bare = await json(await app.request('/api/kiosk/display', { headers }))
   assert.equal(bare.body.event.slug, 'reno-fiesta-nov-2026')
-  assert.equal(bare.body.formUrl, `${base}/virtual/e/reno-fiesta-nov-2026`)
+  assert.equal(bare.body.formUrl, `${base}/virtual`)
   const onSite = await json(await app.request('/api/kiosk/display?event=reno-fiesta-nov-2026&mount=events', { headers }))
   assert.equal(onSite.body.formUrl, `${base}/events/e/reno-fiesta-nov-2026`)
 
@@ -434,7 +434,7 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
   assert.equal(closed.body.qr.unit, 'px')
   assert.equal(closed.body.qr.position, 'top-left')
   assert.equal(closed.body.qr.source, 'event')
-  assert.equal(closed.body.formUrl.endsWith('/e/closed-fest'), true)
+  assert.equal(closed.body.formUrl.endsWith('/virtual'), true)
 
   const global = await json(await app.request('/api/admin/kiosk-qr', {
     method: 'PUT',
@@ -463,15 +463,15 @@ test('the path picks the version, and only after-event codes open the phone whee
   const led = await app.request('/events', { redirect: 'manual' })
   assert.equal(led.status, 302)
   assert.match(led.headers.get('location') || '', /\/events\/spin\?event=reno-fiesta-nov-2026$/)
-  const phone = await app.request('/virtual', { redirect: 'manual' })
-  assert.equal(phone.status, 302)
-  assert.match(phone.headers.get('location') || '', /\/virtual\/e\/reno-fiesta-nov-2026$/)
+  const phone = await app.request('/virtual')
+  assert.equal(phone.status, 200)
+  assert.match(await phone.text(), /id="eventSlot"/)
+  const oldVirtual = await app.request('/virtual/e/reno-fiesta-nov-2026', { redirect: 'manual' })
+  assert.equal(oldVirtual.status, 302)
+  assert.equal(oldVirtual.headers.get('location'), '/virtual')
   const oldSpin = await app.request('/spin?event=reno-fiesta-nov-2026', { redirect: 'manual' })
   assert.equal(oldSpin.status, 302)
   assert.match(oldSpin.headers.get('location') || '', /\/events\/spin\?event=reno-fiesta-nov-2026$/)
-  const afterPage = await app.request('/virtual/e/reno-fiesta-nov-2026')
-  assert.equal(afterPage.status, 200)
-  assert.match(await afterPage.text(), /id="eventSlot"/)
 
   const created = await json(await app.request('/api/entries', {
     method: 'POST',
@@ -479,7 +479,8 @@ test('the path picks the version, and only after-event codes open the phone whee
   }))
   assert.equal(created.status, 200, created.body.error)
   assert.equal(created.body.mode, 'after_event')
-  assert.match(created.body.spinUrl, /\/virtual\/spin\?/)
+  assert.match(created.body.spinUrl, /\/virtual\/spin\?code=/)
+  assert.doesNotMatch(created.body.spinUrl, /event=/)
   assert.match(created.body.spinUrl, /[?&]code=/)
   assert.match(created.body.event.mode, /after_event/)
 
@@ -617,8 +618,8 @@ test('admin stays on /admin, and a created event can be set live', async () => {
   assert.equal(created.body.event.ends, '2026-12-01')
   assert.match(created.body.formUrl, /\/events\/e\/harbour-fest$/)
   assert.match(created.body.spinUrl, /\/events\/spin\?event=harbour-fest$/)
-  assert.match(created.body.virtualFormUrl, /\/virtual\/e\/harbour-fest$/)
-  assert.match(created.body.virtualSpinUrl, /\/virtual\/spin\?event=harbour-fest$/)
+  assert.match(created.body.virtualFormUrl, /\/virtual$/)
+  assert.match(created.body.virtualSpinUrl, /\/virtual\/spin$/)
   const boot = await json(await app.request('/api/bootstrap'))
   assert.ok(boot.body.events.some((event) => event.slug === 'harbour-fest'))
   const madeLive = await json(await app.request('/api/admin/live', {
@@ -632,8 +633,8 @@ test('admin stays on /admin, and a created event can be set live', async () => {
   assert.equal(home.headers.get('location'), '/events')
   const onSite = await app.request('/events', { redirect: 'manual' })
   assert.match(onSite.headers.get('location') || '', /\/events\/spin\?event=harbour-fest$/)
-  const virtual = await app.request('/virtual', { redirect: 'manual' })
-  assert.match(virtual.headers.get('location') || '', /\/virtual\/e\/harbour-fest$/)
+  const virtual = await app.request('/virtual')
+  assert.equal(virtual.status, 200)
   const previousBase = process.env.PUBLIC_BASE_URL
   process.env.PUBLIC_BASE_URL = 'https://luckydraw-renofiesta.onrender.com'
   const labelled = await json(await app.request('/api/admin/entries', { headers: { cookie } }))
@@ -649,7 +650,9 @@ test('admin stays on /admin, and a created event can be set live', async () => {
   assert.match(page, /Event QR codes/)
   assert.match(adminJs, /LIVE NOW/)
   assert.match(adminJs, /On-site/)
-  assert.match(adminJs, /After event/)
+  assert.match(adminJs, /After-event link/)
+  assert.match(adminJs, /Show all events/)
+  assert.match(adminJs, /otherEventPick/)
   assert.match(adminJs, /mount=events/)
   const onSiteQr = await app.request('/api/admin/qr/harbour-fest?mount=events', { headers: { cookie } })
   assert.equal(onSiteQr.status, 200)
