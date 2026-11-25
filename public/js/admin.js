@@ -97,9 +97,9 @@
         '<div><b>' + esc(created.event.name) + '</b>' +
         '<p class="sub">Created. The QR is centred and uses the usual size.</p>' +
         '<p><a href="' + esc(created.spinUrl) + '">' + esc(versionLabel('event_day')) + ' big screen</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(created.formUrl) + '</p>' +
+        '<p class="break-url">' + esc(created.formUrl) + '</p>' +
         '<p><a href="' + esc(created.virtualSpinUrl) + '">' + esc(versionLabel('after_event')) + ' big screen</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(created.virtualFormUrl) + '</p></div></div>';
+        '<p class="break-url">' + esc(created.virtualFormUrl) + '</p></div></div>';
       return load();
     }).catch(function (error) { err.textContent = error.message; });
   });
@@ -427,20 +427,19 @@
     var afterUrl = (hostFor('after_event') || '/virtual').replace(/\/$/, '');
     var liveCard = '';
     if (live) {
-      var slug = encodeURIComponent(live.slug);
-      var onSpin = versionLink('event_day', '/spin?event=' + slug);
-      var onForm = versionLink('event_day', '/e/' + slug);
-      liveCard = '<div class="event-qr live" data-testid="event-qr-row"><img alt="On-site QR for ' + esc(live.name) + '" src="/api/admin/qr/' + slug + '?mount=events">' +
+      var onSpin = versionLink('event_day', '/spin');
+      var onForm = (hostFor('event_day') || '/events').replace(/\/$/, '');
+      liveCard = '<div class="event-qr live" data-testid="event-qr-row"><img alt="On-site QR for ' + esc(live.name) + '" src="/api/admin/qr/on-site">' +
         '<div><b>' + esc(live.name) + (live.edition ? ' · ' + esc(live.edition) : '') + '</b> <span class="live-now" data-testid="live-event">LIVE NOW</span>' +
         '<p class="sub">' + esc(eventDates(live)) + '</p>' +
         '<p><b>On-site.</b> <a href="' + esc(onSpin) + '">Big screen</a> · <a href="' + esc(onForm) + '">Phone form</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(onForm) + '</p></div></div>';
+        '<p class="break-url">' + esc(onForm) + '</p></div></div>';
     }
     var designer = '<div class="event-qr designer-link" data-testid="after-event-link">' +
       '<img alt="QR for the after-event form" src="/api/admin/qr/after-event">' +
       '<div><b>After-event link (for designers)</b>' +
       '<p class="sub">One link for every event. Send this to interior designers.</p>' +
-      '<p style="font-weight:800;word-break:break-all" data-testid="after-event-url">' + esc(afterUrl) + '</p>' +
+      '<p class="break-url" data-testid="after-event-url">' + esc(afterUrl) + '</p>' +
       '<p><button class="mini" type="button" id="copyAfterEvent" data-url="' + esc(afterUrl) + '">Copy link</button></p></div></div>';
     var compact = '';
     if (others.length) {

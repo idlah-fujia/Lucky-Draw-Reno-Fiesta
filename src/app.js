@@ -45,6 +45,9 @@ export function createApp(deps) {
     const spin = `${root}/spin?event=${encodeURIComponent(slug)}`
     return code ? `${spin}&code=${encodeURIComponent(code)}` : spin
   }
+  function onSiteFormUrl(c) {
+    return `${requestBaseUrl(c)}/events`
+  }
   function afterEventFormUrl(c) {
     return `${requestBaseUrl(c)}/virtual`
   }
@@ -63,8 +66,8 @@ export function createApp(deps) {
     }
     return {
       mode,
-      formUrl: linkFor(c, 'event_day', event.slug, 'form'),
-      spinUrl: linkFor(c, 'event_day', event.slug, 'spin')
+      formUrl: onSiteFormUrl(c),
+      spinUrl: `${requestBaseUrl(c)}/events/spin`
     }
   }
   function anyEventSpin(c, body) {
@@ -113,6 +116,7 @@ export function createApp(deps) {
       idleResetSeconds: config.idleResetSeconds || 90,
       siteMode: fallbackMode(),
       events: config.events.filter((event) => event.active).map(asPublic),
+      liveSlug: config.liveSlug || '',
       slots: config.slots
     })
   })
@@ -645,6 +649,9 @@ export function createApp(deps) {
     if (c.req.param('slug') === 'after-event') {
       return qrPng(c, afterEventFormUrl(c), 'after-event.png', { dark: '#1B0F33', light: '#FFFFFF' })
     }
+    if (c.req.param('slug') === 'on-site') {
+      return qrPng(c, onSiteFormUrl(c), 'on-site.png', { dark: '#1B0F33', light: '#FFFFFF' })
+    }
     if (!event) throw new HttpError(404, 'Unknown event.')
     const forced = modeFromMount(c.req.query('mount'))
     const mode = forced || (event.mode ? eventMode(event) : 'event_day')
@@ -655,11 +662,7 @@ export function createApp(deps) {
   const showForm = (c) => c.html(readPage('index.html'), 200, htmlHeaders)
   const showSpin = (c) => c.html(readPage('spin.html'), 200, htmlHeaders)
   app.get('/', (c) => c.redirect('/events', 302))
-  app.get('/events', async (c) => {
-    const event = pickLive(await liveConfig())
-    if (!event) return showForm(c)
-    return c.redirect(`/events/spin?event=${encodeURIComponent(event.slug)}`, 302)
-  })
+  app.get('/events', showForm)
   app.get('/virtual', showForm)
   app.get('/events/spin', showSpin)
   app.get('/events/register', showForm)

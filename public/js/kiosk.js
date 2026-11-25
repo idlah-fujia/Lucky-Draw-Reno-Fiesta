@@ -325,12 +325,7 @@
     var img = $('kioskQrImg');
     var caption = $('kioskQrCaption');
     if (!host || !data || !data.event) return;
-    if (!screenEvent) {
-      screenEvent = data.event.slug;
-      var next = new URL(location.href);
-      next.searchParams.set('event', screenEvent);
-      history.replaceState(null, '', next.pathname + next.search);
-    }
+    if (!screenEvent) screenEvent = data.event.slug;
     var qr = data.qr || {};
     qrPosition = qr.position || 'top-center';
     host.dataset.position = qrPosition;

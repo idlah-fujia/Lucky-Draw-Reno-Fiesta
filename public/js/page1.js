@@ -9,9 +9,12 @@
     });
   }
   function slugFromLocation() {
-    var path = location.pathname.match(/^\/(?:e|after)\/([^/]+)/);
+    var path = location.pathname.match(/\/(?:e|after)\/([^/]+)/);
     if (path) return decodeURIComponent(path[1]);
     return new URLSearchParams(location.search).get('event');
+  }
+  function isOnSiteHome() {
+    return location.pathname === '/events' || location.pathname === '/events/';
   }
   function setErr(message, which) {
     var primary = document.getElementById('err');
@@ -242,6 +245,7 @@
     boot = data;
     if (boot.whatsapp) document.getElementById('waLink').href = 'https://wa.me/' + boot.whatsapp;
     var slug = slugFromLocation();
+    if (!slug && isOnSiteHome() && boot.liveSlug) slug = boot.liveSlug;
     if (!boot.events.length) return showBlocked('No event is open for spins right now.');
     if (!slug) {
       renderEvent(boot.events, '');
