@@ -141,7 +141,6 @@
     if (String(data.get('homeowner_name') || '').trim().length < 2) return 'Enter the homeowner’s name.';
     if (!/^[89]\d{7}$/.test(phone)) return 'Enter a valid homeowner mobile (8 digits, starting with 8 or 9).';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(data.get('homeowner_email') || '').trim())) return 'Enter the homeowner’s email.';
-    if (String(data.get('delivery_address') || '').trim().length < 8) return 'Enter the prize delivery address.';
     if (!file) return 'Upload the down payment receipt or signed contract.';
     if (file.size > 10 * 1048576) return 'Proof file must be under 10 MB.';
     if (!form.decl_contract.checked || !form.decl_genuine.checked || !form.decl_verify.checked) return 'Please tick all three declarations.';

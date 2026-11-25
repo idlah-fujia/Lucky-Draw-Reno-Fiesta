@@ -25,7 +25,7 @@ One service serves both versions. `/events` is the on-site big screen and its ph
 
 - Event dropdown from `config/spin.config.json`. `/e/your-event` and `/?event=your-event` preselect that event, and it can still be changed. `/` and `/register` start with no event chosen.
 - Event date comes from that event. A one-day event is filled in and locked. A multi-day event is a dropdown of those days. There is no free-typed date.
-- Step 1, homeowner details: name, mobile, email, prize delivery address, one photo or PDF of the receipt or signed contract (max 10 MB), and the declarations. **Next** checks this step in the browser and does not call the server. The chosen file stays selected.
+- Step 1, homeowner details: name, mobile, email, one photo or PDF of the receipt or signed contract (max 10 MB), and the declarations. **Next** checks this step in the browser and does not call the server. The chosen file stays selected. The form does not ask for a prize delivery address. The sheet column `delivery_address` stays so older rows are unchanged; new rows leave it blank.
 - Step 2, designer details: name, mobile, email, and interior design company. **Back** returns to step 1 without clearing it. **Submit & get my spin code** sends homeowner, designer, and proof in one request.
 - On submit: one row is saved, including the designer. A code is shown. Only the homeowner is emailed the code. The designer is emailed later, with the homeowner, after the spin.
 
@@ -306,7 +306,7 @@ Eight characters. The alphabet skips O, 0, I, 1, and L so they are easy to read 
 ## Decided
 
 - A code is checked on the server before the kiosk leaves the keypad. It must exist, belong to that screen’s event, be unused, and not be voided. Staff do not have to approve the proof before the spin.
-- Prize delivery address is the final address the prize will be delivered to.
+- The phone form does not collect a prize delivery address. The sheet column stays for older rows.
 - One iPhone per event. After it has been given out, that slice says FULLY REDEEMED and the server will not award another, including when two spins are saved at the same time.
 
 ## Questions for the team

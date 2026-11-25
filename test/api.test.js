@@ -76,7 +76,6 @@ function entryForm(overrides = {}) {
     homeowner_name: 'Mei Lin Tan',
     homeowner_phone: '81234567',
     homeowner_email: 'Mei@Example.com',
-    delivery_address: '10 Example Road #04-02 Singapore 123456',
     decl_contract: 'yes',
     decl_genuine: 'yes',
     decl_verify: 'yes',
@@ -106,6 +105,8 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   const created = await json(await app.request('/api/entries', { method: 'POST', body: entryForm() }))
   assert.equal(created.status, 200)
   assert.equal(created.body.code.length, 8)
+  const saved = (await store.list()).find((row) => row.code === created.body.code)
+  assert.equal(saved.delivery_address, '')
   assert.equal(created.body.email, 'mei@example.com')
   assert.equal(created.body.emailStatus, 'logged')
   assert.equal(sent.records.length, 1)
@@ -191,6 +192,7 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   assert.equal(sent.records.length, 4)
   assert.equal(sent.records.filter((record) => record.to === 'alicia@studio.example').length, 1)
   assert.equal(sent.records.filter((record) => record.to === 'mei@example.com').length, 2)
+  assert.equal(sent.records.some((record) => /delivery address/i.test(record.text + record.html)), false)
 
   const again = await json(await app.request('/api/spin/lookup', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -286,7 +288,6 @@ test('bad proof, future date, and a code for another screen are rejected', async
   text.set('homeowner_name', 'Mei Lin')
   text.set('homeowner_phone', '81234567')
   text.set('homeowner_email', 'mei@example.com')
-  text.set('delivery_address', '10 Example Road Singapore')
   text.set('decl_contract', 'yes')
   text.set('decl_genuine', 'yes')
   text.set('decl_verify', 'yes')
@@ -457,17 +458,35 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
 })
 
 test('the path picks the version, and only after-event codes open the phone wheel', async () => {
-  const { app } = await build()
+  const { app, store } = await build()
   const root = await app.request('/', { redirect: 'manual' })
   assert.equal(root.headers.get('location'), '/events')
   const led = await app.request('/events')
   assert.equal(led.status, 200)
-  assert.match(await led.text(), /id="eventSlot"/)
+  const ledHtml = await led.text()
+  assert.match(ledHtml, /id="eventSlot"/)
+  assert.doesNotMatch(ledHtml, /delivery_address|Prize delivery address/)
   const screen = await app.request('/events/spin')
   assert.equal(screen.status, 200)
   const phone = await app.request('/virtual')
   assert.equal(phone.status, 200)
-  assert.match(await phone.text(), /id="eventSlot"/)
+  const phoneHtml = await phone.text()
+  assert.match(phoneHtml, /id="eventSlot"/)
+  assert.doesNotMatch(phoneHtml, /delivery_address|Prize delivery address/)
+  const pageJs = await (await app.request('/js/page1.js')).text()
+  assert.doesNotMatch(pageJs, /delivery_address/)
+  const ignored = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({
+      homeowner_phone: '84567891',
+      homeowner_email: 'addr@example.com',
+      designer_phone: '63456781',
+      delivery_address: '10 Example Road #04-02 Singapore 123456'
+    })
+  }))
+  assert.equal(ignored.status, 200, ignored.body.error)
+  const stored = (await store.list()).find((row) => row.code === ignored.body.code)
+  assert.equal(stored.delivery_address, '')
   const oldVirtual = await app.request('/virtual/e/reno-fiesta-nov-2026', { redirect: 'manual' })
   assert.equal(oldVirtual.status, 302)
   assert.equal(oldVirtual.headers.get('location'), '/virtual')
@@ -657,6 +676,7 @@ test('admin stays on /admin, and a created event can be set live', async () => {
   assert.match(adminJs, /Show all events/)
   assert.match(adminJs, /otherEventPick/)
   assert.match(adminJs, /mount=events/)
+  assert.doesNotMatch(adminJs, /delivery_address|Prize delivery address/)
   const onSiteQr = await app.request('/api/admin/qr/harbour-fest?mount=events', { headers: { cookie } })
   assert.equal(onSiteQr.status, 200)
   assert.equal(onSiteQr.headers.get('content-type'), 'image/png')

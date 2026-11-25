@@ -125,7 +125,6 @@ export function resultEmails({ entry, spinUrl, whatsapp }) {
     `Event: ${entry.event_name}${entry.event_edition ? ` (${entry.event_edition})` : ''}`,
     `Date attended: ${entry.event_date}`,
     `Homeowner: ${entry.homeowner_name}, ${entry.homeowner_phone}, ${entry.homeowner_email}`,
-    `Prize delivery address: ${entry.delivery_address}`,
     `Interior designer: ${entry.designer_name}, ${entry.designer_phone}, ${entry.designer_email}`,
     `ID company: ${entry.id_company}`,
     '',
@@ -139,8 +138,7 @@ export function resultEmails({ entry, spinUrl, whatsapp }) {
     <p><b>Spin code.</b> ${escapeHtml(pretty)}</p>
     <p><b>Event.</b> ${escapeHtml(entry.event_name)}${entry.event_edition ? ` (${escapeHtml(entry.event_edition)})` : ''}<br>
     <b>Date attended.</b> ${escapeHtml(entry.event_date)}</p>
-    <p><b>Homeowner.</b> ${escapeHtml(entry.homeowner_name)} · ${escapeHtml(entry.homeowner_phone)} · ${escapeHtml(entry.homeowner_email)}<br>
-    <b>Prize delivery address.</b> ${escapeHtml(entry.delivery_address)}</p>
+    <p><b>Homeowner.</b> ${escapeHtml(entry.homeowner_name)} · ${escapeHtml(entry.homeowner_phone)} · ${escapeHtml(entry.homeowner_email)}</p>
     <p><b>Interior designer.</b> ${escapeHtml(entry.designer_name)} · ${escapeHtml(entry.designer_phone)} · ${escapeHtml(entry.designer_email)}<br>
     <b>ID company.</b> ${escapeHtml(entry.id_company)}</p>
     <p>The prize is delivered to the interior designer, and handed to the homeowner once the signed contract is confirmed. If the contract is cancelled, the prize must be returned to IDLah.</p>

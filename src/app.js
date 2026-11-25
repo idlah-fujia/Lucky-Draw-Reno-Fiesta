@@ -225,7 +225,7 @@ export function createApp(deps) {
           homeowner_name: cleanText(body.homeowner_name, { min: 2, max: 80, label: 'the homeowner’s name' }),
           homeowner_phone: phone,
           homeowner_email: emailAddress(body.homeowner_email, 'the homeowner’s email'),
-          delivery_address: cleanText(body.delivery_address, { min: 8, max: 300, label: 'the prize delivery address' }),
+          delivery_address: '',
           designer_name: designerName,
           designer_phone: designerPhoneValue,
           designer_email: designerEmail,

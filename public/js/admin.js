@@ -306,7 +306,7 @@
       if (version && row.site_mode !== version) return false;
       if (status && row.status !== status) return false;
       if (!q) return true;
-      var hay = [row.homeowner_name, row.homeowner_phone, row.homeowner_email, row.code, row.id_company, row.designer_name, row.prize_label, row.delivery_address].join(' ').toLowerCase();
+      var hay = [row.homeowner_name, row.homeowner_phone, row.homeowner_email, row.code, row.id_company, row.designer_name, row.prize_label].join(' ').toLowerCase();
       return hay.indexOf(q) >= 0;
     });
   }
@@ -380,7 +380,6 @@
   function detail(row) {
     return '<b>Designer.</b> ' + esc(row.designer_name || '—') + ' · ' + esc(row.designer_phone || '') + ' · ' + esc(row.designer_email || '') +
       ' · ' + esc(row.id_company || '') +
-      '<br><b>Prize delivery address.</b> ' + esc(row.delivery_address) +
       '<br><b>Event date.</b> ' + esc(row.event_date) +
       ' · <b>Code email.</b> ' + esc(row.code_email_status || '—') +
       ' · <b>Result email.</b> ' + esc(row.result_email_status || '—') +
