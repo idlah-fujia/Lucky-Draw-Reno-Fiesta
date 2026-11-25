@@ -181,7 +181,7 @@
       if (e.key === 'Enter') { e.preventDefault(); submitCode(); }
     });
     $('checkBtn').addEventListener('click', submitCode);
-    input.focus();
+    input.focus({ preventScroll: true });
     armIdle();
   }
 

@@ -202,13 +202,34 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .kiosk label.fl input{height:58px;font-size:20px}
 .shake{animation:shake .35s linear}
 @keyframes shake{25%{transform:translateX(-4px)}50%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
-@media(max-width:1400px){
-  body.kiosk{height:auto;overflow:auto}
+@media(min-width:900px) and (min-height:640px){
+  body.kiosk,.kiosk-scroll{height:100dvh;overflow:hidden}
+  .led-column{height:100dvh;margin:0;padding:1vh 24px .8vh;gap:.7vh;box-sizing:border-box;justify-content:flex-start}
+  .led-logo{height:6vh}
+  .kiosk-event{font-size:2vh;line-height:1.15}
+  .kiosk-event small{font-size:1.35vh}
+  .kiosk-qr,#kioskQr.kiosk-qr{width:min(15vh,18vw) !important;max-width:200px}
+  .kiosk-qr-card{border-radius:14px;padding:.7vh .7vh .4vh}
+  .kiosk-qr-card p{font-size:1.6vh;line-height:1.2;margin-top:.3vh;letter-spacing:0}
+  #panel.kiosk-panel{width:min(46vw,440px);padding:1vh 14px}
+  .kiosk-title{font-size:2.1vh}
+  .kiosk-sub{font-size:1.4vh;margin-top:.15vh}
+  .code-entry{height:5.4vh;min-height:44px;margin-top:.5vh;font-size:2vh}
+  .kiosk .go{height:4.8vh;min-height:44px;margin-top:.5vh;font-size:1.6vh}
+  .kiosk-stage{padding-top:1.8vh}
+  .kiosk .wheel-box{width:min(28vh,32vw);margin:0}
+  .kiosk .pointer{width:2.4vh;height:auto;top:-1.2vh}
+  .kiosk .spin-btn{height:4.8vh;min-height:44px;min-width:160px;margin-top:.3vh;font-size:1.6vh}
+  .kiosk .stage-note{margin-top:.15vh;font-size:1.3vh}
+  .kiosk .prizes{display:none}
+}
+@media(max-width:899px){
+  body.kiosk{height:auto;overflow:auto;padding-top:env(safe-area-inset-top)}
   .kiosk-scroll{height:auto;overflow:visible}
   .kiosk-shell{height:auto}
   .kiosk-main{grid-template-columns:1fr}
-  .led-tools{position:static;width:100%;max-width:none;justify-content:center;padding:12px 12px 0;box-sizing:border-box}
-  .led-column{margin-top:8px;padding:0 12px 28px;box-sizing:border-box}
+  .led-tools{position:static;width:100%;max-width:none;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) 12px 8px;box-sizing:border-box}
+  .led-column{margin-top:4px;padding:0 12px calc(28px + env(safe-area-inset-bottom));box-sizing:border-box}
   .kiosk-qr,#kioskQr.kiosk-qr{width:min(88vw,420px) !important;max-width:420px}
   .kiosk-qr-card{border-radius:18px;padding:12px}
   .kiosk-qr-card p{font-size:18px;line-height:1.3;letter-spacing:0}
@@ -229,8 +250,8 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
   .tools input,.tools select,.tools a,.tools button{width:100%;min-width:0}
   .stats{display:grid;grid-template-columns:1fr 1fr}
   .stat{min-width:0}
-  .event-qr{grid-template-columns:1fr;justify-items:center;text-align:center}
-  .event-qr img{width:min(70vw,220px);height:auto}
+  .event-qr{grid-template-columns:120px minmax(0,1fr);text-align:left;justify-items:start;align-items:center}
+  .event-qr img{width:112px;height:auto}
   .account-line{flex-wrap:wrap;white-space:normal}
   .account-line .acts{margin-left:0;flex-wrap:wrap}
   .other-events .fl{margin-bottom:10px}
@@ -264,7 +285,9 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .event-qr{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
 .event-qr.live{margin-top:8px;background:#E5F8EE;border:2px solid #0E7A45;border-radius:14px;padding:12px}
 .live-now{display:inline-flex;align-items:center;margin-left:8px;background:#0E7A45;color:#fff;font-weight:900;font-size:12px;letter-spacing:.04em;border-radius:999px;padding:4px 10px}
-.other-events{margin-top:8px}
+.other-events{margin-top:8px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.other-events .fl{flex:1 1 220px;margin-bottom:0}
+.other-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 .event-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)}
 .event-line span{color:var(--mut);font-weight:700}
 .event-qr img{width:112px;height:112px;border-radius:12px;background:#fff;justify-self:center}

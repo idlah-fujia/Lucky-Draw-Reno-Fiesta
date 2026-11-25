@@ -73,10 +73,30 @@ export function createApp(deps) {
   function anyEventSpin(c, body) {
     return modeFromMount(body?.mount) === 'after_event' && !String(body?.event || '').trim()
   }
+  let sharedConfig = null
+  let sharedConfigAt = 0
+  let sharedConfigFlight = null
+  function forgetConfig() {
+    sharedConfigAt = 0
+  }
   async function liveConfig() {
-    const base = configOf()
-    const merged = mergeEvents(base.events, await store.listEvents(), await store.readLiveSlug())
-    return { ...base, events: merged.events, liveSlug: merged.liveSlug }
+    if (sharedConfig && Date.now() - sharedConfigAt < 20_000) return sharedConfig
+    if (sharedConfigFlight) return sharedConfigFlight
+    sharedConfigFlight = (async () => {
+      try {
+        const base = configOf()
+        const merged = mergeEvents(base.events, await store.listEvents(), await store.readLiveSlug())
+        sharedConfig = { ...base, events: merged.events, liveSlug: merged.liveSlug }
+        sharedConfigAt = Date.now()
+        return sharedConfig
+      } catch (error) {
+        if (sharedConfig && isSheetQuota(error)) return sharedConfig
+        throw error
+      } finally {
+        sharedConfigFlight = null
+      }
+    })()
+    return sharedConfigFlight
   }
   const app = new Hono()
 
@@ -622,6 +642,7 @@ export function createApp(deps) {
       if (events.some((event) => event.slug === slug)) throw new HttpError(409, 'That event name is already in use.')
       events.push(created)
     })
+    forgetConfig()
     return c.json({
       event: asPublic(created, 'event_day'),
       formUrl: linkFor(c, 'event_day', slug, 'form'),
@@ -640,6 +661,7 @@ export function createApp(deps) {
     const event = findEvent(config, slug)
     if (!event || event.active === false) throw new HttpError(400, 'Choose an open event.')
     await store.setLiveSlug(slug)
+    forgetConfig()
     return c.json({ ok: true, liveSlug: slug })
   })
 

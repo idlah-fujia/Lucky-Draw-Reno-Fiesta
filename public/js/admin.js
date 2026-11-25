@@ -449,8 +449,8 @@
         others.map(function (event) {
           return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '')) + '</option>';
         }).join('') +
-        '</select></label>' + setBtn +
-        '<button class="mini" type="button" id="showAllEvents" data-testid="show-all-events">' + (state.showAllEvents ? 'Hide events' : 'Show all events') + '</button>' +
+        '</select></label><span class="other-actions">' + setBtn +
+        '<button class="mini" type="button" id="showAllEvents" data-testid="show-all-events">' + (state.showAllEvents ? 'Hide events' : 'Show all events') + '</button></span>' +
         '<div id="allEvents"' + (state.showAllEvents ? '' : ' hidden') + '>' +
         others.map(function (event) {
           var action = admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '';
@@ -505,7 +505,7 @@
     host.innerHTML = state.events.map(function (event) {
       var slug = encodeURIComponent(event.slug);
       var onForm = versionLink('event_day', '/e/' + slug);
-      return '<div class="qr-card"><img alt="On-site QR for ' + esc(event.name) + '" src="/api/admin/qr/' + slug + '?mount=events">' +
+      return '<div class="qr-card"><img alt="On-site QR for ' + esc(event.name) + '" loading="lazy" decoding="async" src="/api/admin/qr/' + slug + '?mount=events">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b>' +
         '<p class="sub">' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
         '<p><b>On-site.</b> ' + esc(onForm) + '</p>' +
