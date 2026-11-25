@@ -8,6 +8,7 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import QRCode from 'qrcode'
 import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
 import { findEvent, getConfig, publicEvent } from './config.js'
+import { defaultEvent, eventMode, siteMode } from './mode.js'
 import { formatCode, generateCode, parseCode } from './codes.js'
 import { proofPath, validProofSig } from './sign.js'
 import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
@@ -28,6 +29,8 @@ function readPage(name) {
 export function createApp(deps) {
   const { store, files, mailer, adminPassword, fileSecret, allowForcePrize = false } = deps
   const configOf = deps.getConfig || getConfig
+  const fallbackMode = () => deps.siteMode || siteMode()
+  const asPublic = (event) => publicEvent(event, fallbackMode())
   const app = new Hono()
 
   app.onError((err, c) => {
@@ -59,7 +62,8 @@ export function createApp(deps) {
       kioskResetSeconds: config.kioskResetSeconds || 120,
       invalidResetSeconds: config.invalidResetSeconds || 12,
       idleResetSeconds: config.idleResetSeconds || 90,
-      events: config.events.filter((event) => event.active).map(publicEvent),
+      siteMode: fallbackMode(),
+      events: config.events.filter((event) => event.active).map(asPublic),
       slots: config.slots
     })
   })
@@ -69,7 +73,7 @@ export function createApp(deps) {
     const event = eventForScreen(config, c.req.query('event'))
     const qr = resolveKioskQr(await store.readKioskQr(), event.slug)
     return c.json({
-      event: publicEvent(event),
+      event: asPublic(event),
       formUrl: formUrlFor(c, event.slug),
       qr
     })
@@ -87,7 +91,7 @@ export function createApp(deps) {
     if (!event) throw new HttpError(404, 'That event link is not recognised.')
     const list = await store.list()
     return c.json({
-      event: publicEvent(event),
+      event: asPublic(event),
       soldOut: soldOutIds(list, event.slug, config)
     })
   })
@@ -182,8 +186,11 @@ export function createApp(deps) {
       throw error
     }
 
-    const spinUrl = `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(event.slug)}`
-    const mailed = await mailer.send(codeEmail({ entry, spinUrl, whatsapp: config.whatsapp }))
+    const mode = eventMode(event, fallbackMode())
+    const spinUrl = mode === 'after_event'
+      ? `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(event.slug)}&code=${encodeURIComponent(entry.code)}`
+      : `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(event.slug)}`
+    const mailed = await mailer.send(codeEmail({ entry, spinUrl, whatsapp: config.whatsapp, mode }))
     await store.transaction((list) => {
       const row = list.find((item) => item.id === entry.id)
       if (row) {
@@ -198,7 +205,8 @@ export function createApp(deps) {
       firstName: firstName(entry.homeowner_name),
       email: entry.homeowner_email,
       emailStatus: mailed.status,
-      event: publicEvent(event),
+      event: asPublic(event),
+      mode,
       spinUrl
     })
   })
@@ -341,7 +349,7 @@ export function createApp(deps) {
     const list = await freshLinks(await store.list(), c, fileSecret)
     return c.json({
       entries: list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
-      events: config.events.map(publicEvent),
+      events: config.events.map(asPublic),
       storage: store.mode
     })
   })
@@ -359,7 +367,7 @@ export function createApp(deps) {
     const slug = c.req.query('event') || config.events.find((event) => event.active)?.slug
     const event = slug ? findEvent(config, slug) : null
     const sold = event ? soldOutIds(list, event.slug, config) : []
-    return c.json({ event: event ? publicEvent(event) : null, soldOut: sold, odds: oddsTable(config, sold) })
+    return c.json({ event: event ? asPublic(event) : null, soldOut: sold, odds: oddsTable(config, sold) })
   })
 
   app.get('/api/admin/outbox', async (c) => {
@@ -395,12 +403,12 @@ export function createApp(deps) {
     const slug = event ? event.slug : (config.events.find((item) => item.active)?.slug || config.events[0]?.slug || '')
     const key = event ? event.slug : GLOBAL_EVENT
     return c.json({
-      event: event ? publicEvent(event) : null,
+      event: event ? asPublic(event) : null,
       saved: normalizeSaved(map[key]),
       resolved: resolveKioskQr(map, slug),
       env: envKioskQr(),
       limits: QR_LIMITS,
-      events: config.events.map(publicEvent)
+      events: config.events.map(asPublic)
     })
   })
 
@@ -431,9 +439,17 @@ export function createApp(deps) {
   })
 
   const htmlHeaders = { 'Cache-Control': 'no-cache' }
-  app.get('/', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
+  app.get('/', (c) => {
+    const event = defaultEvent(configOf())
+    if (!event) return c.html(readPage('index.html'), 200, htmlHeaders)
+    if (fallbackMode() === 'event_day') {
+      return c.redirect(`/spin?event=${encodeURIComponent(event.slug)}`, 302)
+    }
+    return c.redirect(`/e/${encodeURIComponent(event.slug)}`, 302)
+  })
   app.get('/register', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
   app.get('/e/:slug', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
+  app.get('/after/:slug', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
   app.get('/spin', (c) => c.html(readPage('spin.html'), 200, htmlHeaders))
   app.get('/admin', (c) => c.html(readPage('admin.html'), 200, htmlHeaders))
 

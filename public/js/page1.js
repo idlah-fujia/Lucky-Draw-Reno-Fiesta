@@ -9,7 +9,7 @@
     });
   }
   function slugFromLocation() {
-    var path = location.pathname.match(/^\/e\/([^/]+)/);
+    var path = location.pathname.match(/^\/(?:e|after)\/([^/]+)/);
     if (path) return decodeURIComponent(path[1]);
     return new URLSearchParams(location.search).get('event');
   }
@@ -209,6 +209,8 @@
     var emailNote = result.emailStatus === 'sent'
       ? 'We also emailed it to <b>' + esc(result.email) + '</b>.'
       : 'Email isn’t sending from this server yet, so the screenshot is what counts. Staff can look the code up if you lose it.';
+    var after = result.mode === 'after_event' || (result.event && result.event.mode === 'after_event');
+    var spinHref = '/spin?event=' + encodeURIComponent((result.event && result.event.slug) || '') + '&code=' + encodeURIComponent(result.code);
     document.getElementById('formCard').innerHTML =
       '<div class="done-card">' +
       '<img class="done-otter" src="/img/otter-6.webp" alt="">' +
@@ -216,13 +218,15 @@
       '<div class="save-banner">Screenshot this page or write the code down before you leave.</div>' +
       '<div class="code-hero" data-testid="spin-code"><small>Spin code</small><b>' + esc(result.codeDisplay) + '</b></div>' +
       '<div class="next-steps">' +
-      '<div><i>1</i><span>Save this code. ' + emailNote + '</span></div>' +
-      '<div><i>2</i><span>Walk to the big screen at the event.</span></div>' +
-      '<div><i>3</i><span>Type the code on the big screen. The wheel unlocks straight away, then you spin once.</span></div>' +
+      (after
+        ? '<div><i>1</i><span>Save this code. ' + emailNote + '</span></div><div><i>2</i><span>Tap Spin now. The wheel opens on this phone with your code ready.</span></div>'
+        : '<div><i>1</i><span>Save this code. ' + emailNote + '</span></div><div><i>2</i><span>Walk to the big screen at the event.</span></div><div><i>3</i><span>Type the code on the big screen. The wheel unlocks straight away, then you spin once.</span></div>') +
       '</div>' +
-      '<div class="row-btns"><button class="btn-ghost" id="copyBtn" type="button">Copy code</button>' +
+      '<div class="row-btns">' +
+      (after ? '<a class="go" id="spinNow" data-testid="spin-now" href="' + esc(spinHref) + '">Spin now</a>' : '') +
+      '<button class="btn-ghost" id="copyBtn" type="button">Copy code</button>' +
       '<a class="btn-wa" id="codeWa" target="_blank" rel="noopener">WhatsApp us</a></div>' +
-      '<p class="sub" style="margin-top:12px">The code works once. Don’t share it until you’re at the wheel.</p>' +
+      '<p class="sub" style="margin-top:12px">The code works once.</p>' +
       '</div>';
     document.getElementById('lock').innerHTML = '<div><b>🎟️</b>See you at the big screen</div>';
     document.getElementById('stageNote').textContent = 'Code ' + result.codeDisplay + ' · one spin on the LED screen.';

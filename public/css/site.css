@@ -139,13 +139,19 @@ footer{text-align:center;font-size:12.5px;color:rgba(27,23,20,.55);padding:0 0 4
 @media(prefers-reduced-motion:reduce){.spin-btn.ready,.wheel-glow,.res{animation:none}}
 
 body.kiosk{height:100dvh;overflow:hidden;background:radial-gradient(90% 80% at 70% 40%,#FFF1E2 0%,#FFF8F1 42%,#F6E7FF 100%)}
-.kiosk-scroll{height:100dvh;overflow:auto}
-.kiosk-qr{display:flex;padding:16px 18px 6px}
+.kiosk-scroll{height:100dvh;overflow:auto;position:relative}
+.led-tools{position:absolute;top:12px;right:12px;z-index:4;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:min(420px,46vw)}
+.led-column{width:100%;margin:28px auto 40px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.led-logo{height:clamp(84px,12vh,140px);width:auto;display:block}
+.kiosk-event{text-align:center;flex:0 0 auto}
+.kiosk-qr,#panel.kiosk-panel{width:min(88vw,var(--qr-size,34vw));max-width:860px;align-self:center;flex:0 0 auto}
+.kiosk-qr{display:flex;padding:0;justify-content:center}
 .kiosk-qr[data-position$="left"]{justify-content:flex-start}
 .kiosk-qr[data-position$="right"]{justify-content:flex-end}
 .kiosk-qr[data-position$="center"]{justify-content:center}
 .kiosk-qr-card{background:#fff;color:#000;border-radius:28px;padding:16px 16px 12px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(27,15,51,.16);text-align:center}
-.kiosk-qr-card img{width:var(--qr-size,34vw);max-width:78vh;height:auto;aspect-ratio:1;display:block;background:#fff;image-rendering:pixelated}
+.kiosk-qr-card{width:100%}
+.kiosk-qr-card img{width:100%;max-width:100%;height:auto;aspect-ratio:1;display:block;background:#fff;image-rendering:pixelated}
 .kiosk-qr-card img:not([src]){visibility:hidden}
 .kiosk-qr-card p{margin-top:8px;font-weight:900;font-size:clamp(20px,2.2vw,32px);letter-spacing:-.03em;color:#000}
 .kiosk-shell{height:auto;min-height:100dvh;display:grid;grid-template-rows:auto 1fr;padding:10px 18px 14px}
@@ -160,7 +166,9 @@ body.kiosk{height:100dvh;overflow:hidden;background:radial-gradient(90% 80% at 7
 .ready-copy{margin:auto 0;text-align:center}
 .ready-copy .kiosk-sub{margin-left:auto;margin-right:auto}
 .kiosk-stage{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.kiosk .wheel-box{width:min(62vh,48vw);margin:0}
+.kiosk .wheel-box{width:min(62vh,70vw,520px);margin:0}
+html.spin-prefilled #kioskQr,html.spin-prefilled #panel,body.spin-prefilled #kioskQr,body.spin-prefilled #panel{display:none}
+html.spin-prefilled .wheel-box,body.spin-prefilled .wheel-box{width:min(92vw,440px)}
 .kiosk .spin-btn{min-width:min(100%,340px);height:72px;min-height:44px;font-size:22px;flex-shrink:0}
 .kiosk .wheel-box,.kiosk .prizes,.kiosk-stage{flex-shrink:0}
 .kiosk .prizes img{height:72px}

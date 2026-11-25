@@ -9,6 +9,8 @@
   var modal = document.getElementById('modal');
   var boot = { slots: [], kioskResetSeconds: 120, invalidResetSeconds: 12, idleResetSeconds: 90, whatsapp: '6588949268' };
   var screenEvent = new URLSearchParams(location.search).get('event') || '';
+  var presetRaw = new URLSearchParams(location.search).get('code') || '';
+  if (presetRaw) document.body.classList.add('spin-prefilled');
   var qrPosition = 'top-center';
   var mode = 'code';
   var code = '';
@@ -315,7 +317,6 @@
     var host = $('kioskQr');
     var img = $('kioskQrImg');
     var caption = $('kioskQrCaption');
-    var scroll = $('kioskScroll');
     if (!host || !data || !data.event) return;
     if (!screenEvent) {
       screenEvent = data.event.slug;
@@ -326,16 +327,14 @@
     var qr = data.qr || {};
     qrPosition = qr.position || 'top-center';
     host.dataset.position = qrPosition;
-    host.style.setProperty('--qr-size', qr.unit === 'px' ? (qr.size + 'px') : ((qr.size || 34) + 'vw'));
+    var qrSize = qr.unit === 'px' ? (qr.size + 'px') : ((qr.size || 34) + 'vw');
+    host.style.setProperty('--qr-size', qrSize);
+    var column = document.querySelector('.led-column');
+    if (column) column.style.setProperty('--qr-size', qrSize);
     var src = '/api/kiosk/qr.png?event=' + encodeURIComponent(data.event.slug);
     if (img.getAttribute('src') !== src) img.src = src;
     img.alt = 'QR code to register for ' + (data.event.name || 'this event');
     if (caption) caption.textContent = 'Scan to register for your spin';
-    if (scroll) {
-      var atBottom = qrPosition.indexOf('bottom') === 0;
-      if (atBottom && host !== scroll.lastElementChild) scroll.appendChild(host);
-      if (!atBottom && host !== scroll.firstElementChild) scroll.insertBefore(host, scroll.firstElementChild);
-    }
   }
 
   function loadKioskQr() {
@@ -432,7 +431,37 @@
     wake();
     return loadKioskQr();
   }).then(refreshSold).then(function () {
+    if (presetRaw) return openPreset(presetRaw);
     renderCode();
     scrollToQr();
   }).catch(function () {});
+
+  function openPreset(raw) {
+    code = String(raw || '').toUpperCase().replace(/[\s-]/g, '').split('').filter(function (ch) {
+      return ALPHABET.indexOf(ch) >= 0;
+    }).join('').slice(0, 8);
+    if (code.length !== 8) {
+      document.documentElement.classList.remove('spin-prefilled');
+      document.body.classList.remove('spin-prefilled');
+      renderCode();
+      return;
+    }
+    return api('/api/spin/lookup', { code: code, event: screenEvent }).then(function (view) {
+      sold = view.soldOut || [];
+      SureWinWheel.markSold(wheel, boot.slots, sold);
+      entry = view;
+      if (view.state === 'ready' && view.canContinue === true) return showReady(view);
+      document.documentElement.classList.remove('spin-prefilled');
+      document.body.classList.remove('spin-prefilled');
+      if (view.state === 'voided') return showProblem('This code has been voided', 'Please see the IDLah booth. This spin can’t be used.', false);
+      if (view.state === 'spun') return showAlready(view);
+      showProblem('Code not accepted', view.state === 'needs_designer'
+        ? 'This code has no interior designer on it, so it can’t spin.'
+        : 'The server did not confirm this code. Please try again.', true);
+    }).catch(function (error) {
+      document.documentElement.classList.remove('spin-prefilled');
+      document.body.classList.remove('spin-prefilled');
+      showProblem(error.status === 404 ? 'Code not recognised' : 'Check that code', error.message, true);
+    });
+  }
 })();

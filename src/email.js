@@ -84,14 +84,17 @@ async function remember(file, record) {
   await fs.promises.rename(tmp, file)
 }
 
-export function codeEmail({ entry, spinUrl, whatsapp }) {
+export function codeEmail({ entry, spinUrl, whatsapp, mode }) {
   const pretty = formatCode(entry.code)
   const subject = `Your Sure-Win Spin code · ${entry.event_name}`
+  const where = mode === 'after_event'
+    ? `Open this link on your phone to spin: ${spinUrl}`
+    : `At the event, type it on the big screen to spin. Spin page: ${spinUrl}`
   const text = [
     `Your Sure-Win Spin code is ${pretty}.`,
     '',
-    'Screenshot this email or write the code down. At the event, type it on the big screen to spin.',
-    `Spin page: ${spinUrl}`,
+    'Screenshot this email or write the code down.',
+    where,
     '',
     `Event: ${entry.event_name}${entry.event_edition ? ` (${entry.event_edition})` : ''}`,
     `Date attended: ${entry.event_date}`,
@@ -103,12 +106,12 @@ export function codeEmail({ entry, spinUrl, whatsapp }) {
   const html = wrapHtml(`
     <p style="font-size:15px;margin:0 0 8px">Your Sure-Win Spin code</p>
     <p style="font-size:36px;font-weight:900;letter-spacing:.12em;margin:0 0 12px">${escapeHtml(pretty)}</p>
-    <p>Screenshot this email or write the code down. At the event, type it on the big screen. The code works once.</p>
+    <p>Screenshot this email or write the code down. ${mode === 'after_event' ? `Spin on your phone: <a href="${escapeHtml(spinUrl)}">open the wheel</a>.` : 'At the event, type it on the big screen.'} The code works once.</p>
     <p><a href="${escapeHtml(spinUrl)}">Open the spin page</a></p>
     <p><b>Event.</b> ${escapeHtml(entry.event_name)}${entry.event_edition ? ` (${escapeHtml(entry.event_edition)})` : ''}<br>
     <b>Date attended.</b> ${escapeHtml(entry.event_date)}<br>
     <b>Name.</b> ${escapeHtml(entry.homeowner_name)}</p>
-    <p>Type the code on the big screen and spin. The designer’s details are already saved with this entry. Questions? <a href="https://wa.me/${whatsapp}">WhatsApp us</a>.</p>
+    <p>${mode === 'after_event' ? 'The spin link above opens the wheel on your phone with this code ready.' : 'Type the code on the big screen and spin.'} The designer’s details are already saved with this entry. Questions? <a href="https://wa.me/${whatsapp}">WhatsApp us</a>.</p>
   `)
   return { to: entry.homeowner_email, subject, text, html }
 }

@@ -6,6 +6,17 @@ Someone fills the phone form for a homeowner: homeowner details, then the interi
 
 This is a new site. It copies the look of the current Sure-Win page (navy, gold, orange, pink, the 32-slice wheel, the otters) and replaces the single-page demo with this two-step flow.
 
+## Two services, one repo
+
+`SITE_MODE` decides what `/` does. Leave it unset and it is `after_event`.
+
+| `SITE_MODE` | `/` opens | Spin page |
+| --- | --- | --- |
+| `event_day` | `/spin?event=<first open event>` | Logo, centred registration QR, code field, then the wheel |
+| `after_event` | `/e/<first open event>` | Same centred layout. After signup, **Spin now** opens `/spin?event=<slug>&code=<code>` and the phone skips the QR and the code box |
+
+Set `PUBLIC_BASE_URL` to that service’s own `https` address so the QR and emails use its host. An event can set `"mode": "event_day"` or `"mode": "after_event"` to override the service for that event only. The QR size control still changes the code. The position control is not used: the QR stays centred.
+
 ## The two pages
 
 **Page 1, on a phone** (`/e/your-event`, `/`, or `/register`)

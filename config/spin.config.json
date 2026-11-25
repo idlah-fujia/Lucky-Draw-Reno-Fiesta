@@ -19,6 +19,15 @@
       "starts": "2026-11-01",
       "ends": "2026-12-15",
       "active": true
+    },
+    {
+      "slug": "reno-fiesta-nov-2026-after",
+      "name": "Reno Fiesta",
+      "edition": "November 2026 · after the event",
+      "starts": "2026-11-20",
+      "ends": "2026-12-30",
+      "active": true,
+      "mode": "after_event"
     }
   ],
   "prizes": [

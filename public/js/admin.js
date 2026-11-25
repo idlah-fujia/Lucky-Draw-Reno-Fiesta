@@ -294,7 +294,7 @@
       var url = location.origin + '/e/' + event.slug;
       return '<div class="qr-card"><img alt="QR for ' + esc(event.name) + '" src="/api/admin/qr/' + encodeURIComponent(event.slug) + '">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b>' +
-        '<p class="sub">' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
+        '<p class="sub">' + (event.mode === 'after_event' ? 'After the event' : 'Event day') + ' · ' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
         '<p style="font-weight:800;word-break:break-all">' + esc(url) + '</p>' +
         '<p><a href="/api/admin/qr/' + encodeURIComponent(event.slug) + '" download="spin-' + esc(event.slug) + '.png">Download PNG</a></p></div></div>';
     }).join('');

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { oddsTable } from './prizes.js'
+import { eventMode } from './mode.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const configPath = path.join(root, 'config', 'spin.config.json')
@@ -27,6 +28,9 @@ export function validateConfig(config) {
     }
     if (event.ends && !/^\d{4}-\d{2}-\d{2}$/.test(event.ends)) {
       throw new Error(`Event ${event.slug} ends must be YYYY-MM-DD.`)
+    }
+    if (event.mode && event.mode !== 'event_day' && event.mode !== 'after_event') {
+      throw new Error(`Event ${event.slug} mode must be event_day or after_event.`)
     }
   }
   if (!Array.isArray(config.prizes) || config.prizes.length === 0) {
@@ -67,14 +71,15 @@ export function getConfig() {
   }
 }
 
-export function publicEvent(event) {
+export function publicEvent(event, fallbackMode) {
   return {
     slug: event.slug,
     name: event.name,
     edition: event.edition || '',
     starts: event.starts || '',
     ends: event.ends || '',
-    active: !!event.active
+    active: !!event.active,
+    mode: eventMode(event, fallbackMode)
   }
 }
 

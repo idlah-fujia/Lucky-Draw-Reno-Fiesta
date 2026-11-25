@@ -11,26 +11,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/site.css">
+<script>if (/[?&]code=/.test(location.search)) document.documentElement.classList.add('spin-prefilled')</script>
 </head>
 <body class="kiosk">
 <div class="kiosk-scroll" id="kioskScroll">
-<section class="kiosk-qr" id="kioskQr" data-position="top-center" data-testid="kiosk-qr">
-  <div class="kiosk-qr-card">
-    <img id="kioskQrImg" alt="QR code. Scan to register for your spin" width="960" height="960">
-    <p id="kioskQrCaption">Scan to register for your spin</p>
+  <div class="led-tools">
+    <button class="tool" id="fullBtn" type="button">Fill the screen</button>
+    <button class="tool" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
+    <span class="top-help">Help · WhatsApp <a id="waLink" href="https://wa.me/6588949268" target="_blank" rel="noopener">8894 9268</a></span>
   </div>
-</section>
-<div class="kiosk-shell">
-  <header class="kiosk-top">
-    <span class="logo"><img src="/img/rf-logo.png" alt="Reno Fiesta"></span>
+  <div class="led-column">
+    <img class="led-logo" src="/img/rf-logo.png" alt="Reno Fiesta">
     <div class="kiosk-event" id="eventLabel">Sure-Win Spin<small>Enter the code from the homeowner’s phone</small></div>
-    <div class="kiosk-tools">
-      <button class="tool" id="fullBtn" type="button">Fill the screen</button>
-      <button class="tool" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
-      <span class="top-help">Help · WhatsApp <a id="waLink" href="https://wa.me/6588949268" target="_blank" rel="noopener">8894 9268</a></span>
-    </div>
-  </header>
-  <div class="kiosk-main">
+    <section class="kiosk-qr" id="kioskQr" data-position="top-center" data-testid="kiosk-qr">
+      <div class="kiosk-qr-card">
+        <img id="kioskQrImg" alt="QR code. Scan to register for your spin" width="960" height="960">
+        <p id="kioskQrCaption">Scan to register for your spin</p>
+      </div>
+    </section>
     <section class="kiosk-panel" id="panel" aria-live="polite"></section>
     <section class="kiosk-stage stage" id="stage">
       <div class="wheel-box">
@@ -47,7 +45,6 @@
       </div>
     </section>
   </div>
-</div>
 </div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
   <div class="res">

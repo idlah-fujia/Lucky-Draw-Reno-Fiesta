@@ -46,7 +46,7 @@ function mailer() {
   }
 }
 
-async function build() {
+async function build(options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spin-'))
   const store = new LocalStore(dir)
   await store.ready()
@@ -60,7 +60,8 @@ async function build() {
     getConfig: testConfig,
     adminPassword: 'test-password-1',
     fileSecret: 'test-secret',
-    allowForcePrize: true
+    allowForcePrize: true,
+    siteMode: options.siteMode
   })
   return { app, store, sent, dir }
 }
@@ -107,7 +108,7 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   assert.equal(created.body.emailStatus, 'logged')
   assert.equal(sent.records.length, 1)
   assert.equal(sent.records[0].to, 'mei@example.com')
-  assert.match(sent.records[0].text, /big screen/)
+  assert.match(sent.records[0].text, /phone to spin|big screen/)
   assert.match(sent.records[0].text, new RegExp(formatCode(created.body.code)))
   assert.doesNotMatch(sent.records[0].text, /undefined/)
   assert.equal(sent.records.some((record) => record.to === 'alicia@studio.example'), false)
@@ -337,9 +338,12 @@ test('two spins at once cannot both take the iPhone', async () => {
 
 test('the phone form lists events, and the server keeps the date inside that event', async () => {
   const { app } = await build()
-  const home = await app.request('/')
-  const html = await home.text()
-  assert.equal(home.status, 200)
+  const home = await app.request('/', { redirect: 'manual' })
+  assert.equal(home.status, 302)
+  assert.match(home.headers.get('location') || '', /\/e\/reno-fiesta-nov-2026$/)
+  const form = await app.request('/e/reno-fiesta-nov-2026')
+  const html = await form.text()
+  assert.equal(form.status, 200)
   assert.match(html, /id="eventSlot"/)
   assert.match(html, /id="dateSlot"/)
   assert.match(html, /data-testid="step-designer"/)
@@ -439,6 +443,41 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
   assert.match(spinHtml, /id="kioskQr"/)
   assert.match(spinHtml, /Scan to register for your spin/)
   assert.match(spinHtml, />Close</)
+})
+
+test('SITE_MODE picks the home page, and only after-event codes open the phone wheel', async () => {
+  const day = await build({ siteMode: 'event_day' })
+  const led = await day.app.request('/', { redirect: 'manual' })
+  assert.equal(led.status, 302)
+  assert.match(led.headers.get('location') || '', /\/spin\?event=reno-fiesta-nov-2026$/)
+
+  const later = await build({ siteMode: 'after_event' })
+  const phone = await later.app.request('/', { redirect: 'manual' })
+  assert.equal(phone.status, 302)
+  assert.match(phone.headers.get('location') || '', /\/e\/reno-fiesta-nov-2026$/)
+  const afterPage = await later.app.request('/after/reno-fiesta-nov-2026')
+  assert.equal(afterPage.status, 200)
+  assert.match(await afterPage.text(), /id="eventSlot"/)
+
+  const created = await json(await later.app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ homeowner_phone: '81231111', homeowner_email: 'after@example.com' })
+  }))
+  assert.equal(created.status, 200, created.body.error)
+  assert.equal(created.body.mode, 'after_event')
+  assert.match(created.body.spinUrl, /[?&]code=/)
+  assert.match(created.body.event.mode, /after_event/)
+
+  const dayEntry = await json(await day.app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ homeowner_phone: '81230001', homeowner_email: 'day@example.com' })
+  }))
+  assert.equal(dayEntry.status, 200, dayEntry.body.error)
+  assert.equal(dayEntry.body.mode, 'event_day')
+  assert.doesNotMatch(dayEntry.body.spinUrl, /code=/)
+
+  const configured = getConfig().events.find((event) => event.slug === 'reno-fiesta-nov-2026-after')
+  assert.equal(configured.mode, 'after_event')
 })
 
 test('the prize pop-up stays for two minutes and counts down as m:ss', async () => {
