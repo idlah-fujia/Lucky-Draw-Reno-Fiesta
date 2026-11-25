@@ -126,7 +126,7 @@ Env defaults, used when nothing is saved (and after a wiped disk):
 
 | Variable | Example | Meaning |
 | --- | --- | --- |
-| `KIOSK_QR_SIZE` | `34%` or `480px` | Percent of screen width (16–70) or pixels (160–900). A bare number is a percent. |
+| `KIOSK_QR_SIZE` | `16%` or `280px` | Percent of screen width (16–70) or pixels (160–900). A bare number is a percent. The built-in default is 16%, about a 280px code on a 1920 screen. |
 | `KIOSK_QR_POSITION` | `top-center` | `top-left`, `top-center`, `top-right`, `bottom-left`, `bottom-center`, `bottom-right`. `centre` is accepted. |
 
 Set both on the Render service if you want a restart to keep a size when Sheets is not connected. A saved admin value overrides these until that store is wiped. The admin routes require the admin password.

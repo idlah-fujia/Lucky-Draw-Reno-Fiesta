@@ -144,7 +144,8 @@ body.kiosk{height:100dvh;overflow:hidden;background:radial-gradient(90% 80% at 7
 .led-column{width:100%;margin:28px auto 40px;display:flex;flex-direction:column;align-items:center;gap:14px}
 .led-logo{height:clamp(84px,12vh,140px);width:auto;display:block}
 .kiosk-event{text-align:center;flex:0 0 auto}
-.kiosk-qr,#panel.kiosk-panel{width:min(88vw,var(--qr-size,34vw));max-width:860px;align-self:center;flex:0 0 auto}
+.kiosk-qr{width:min(88vw,var(--qr-size,16vw));max-width:860px;align-self:center;flex:0 0 auto}
+#panel.kiosk-panel{width:min(92vw,480px);align-self:center;flex:0 0 auto}
 .kiosk-qr{display:flex;padding:0;justify-content:center}
 .kiosk-qr[data-position$="left"]{justify-content:flex-start}
 .kiosk-qr[data-position$="right"]{justify-content:flex-end}

@@ -327,7 +327,7 @@
     var qr = data.qr || {};
     qrPosition = qr.position || 'top-center';
     host.dataset.position = qrPosition;
-    var qrSize = qr.unit === 'px' ? (qr.size + 'px') : ((qr.size || 34) + 'vw');
+    var qrSize = qr.unit === 'px' ? (qr.size + 'px') : ((qr.size || 16) + 'vw');
     host.style.setProperty('--qr-size', qrSize);
     var column = document.querySelector('.led-column');
     if (column) column.style.setProperty('--qr-size', qrSize);

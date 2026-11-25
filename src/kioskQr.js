@@ -15,7 +15,7 @@ export const PX_MIN = 160
 export const PX_MAX = 900
 export const GLOBAL_EVENT = '*'
 
-export const DEFAULT_QR = { size: 34, unit: 'percent', position: 'top-center' }
+export const DEFAULT_QR = { size: 16, unit: 'percent', position: 'top-center' }
 
 export const QR_LIMITS = {
   percent: [PERCENT_MIN, PERCENT_MAX],
