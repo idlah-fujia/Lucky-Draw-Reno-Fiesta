@@ -34,6 +34,7 @@ label.fl input,label.fl select{height:50px}
 label.fl textarea{padding:12px 14px;min-height:84px;resize:vertical}
 label.fl select{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%231B1714' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat right 14px center}
 label.fl input:focus,label.fl select:focus,label.fl textarea:focus{outline:none;border-color:var(--or)}
+label.fl input[readonly]{background:#FFF8F1;color:var(--ink)}
 .ph{display:flex;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
 .ph b{display:flex;align-items:center;padding:0 12px;color:var(--mut);border-right:1.5px solid var(--line);font-size:16px}
 .ph input{border:none!important;border-radius:0!important;height:47px}
@@ -134,6 +135,15 @@ footer{text-align:center;font-size:12.5px;color:rgba(27,23,20,.55);padding:0 0 4
 @media(prefers-reduced-motion:reduce){.spin-btn.ready,.wheel-glow,.res{animation:none}}
 
 body.kiosk{height:100dvh;overflow:hidden;background:radial-gradient(90% 80% at 70% 40%,#FFF1E2 0%,#FFF8F1 42%,#F6E7FF 100%)}
+.kiosk-scroll{height:100dvh;overflow:auto}
+.kiosk-qr{display:flex;padding:16px 18px 6px}
+.kiosk-qr[data-position$="left"]{justify-content:flex-start}
+.kiosk-qr[data-position$="right"]{justify-content:flex-end}
+.kiosk-qr[data-position$="center"]{justify-content:center}
+.kiosk-qr-card{background:#fff;color:#000;border-radius:28px;padding:16px 16px 12px;border:1px solid var(--line);box-shadow:0 18px 50px rgba(27,15,51,.16);text-align:center}
+.kiosk-qr-card img{width:var(--qr-size,34vw);max-width:78vh;height:auto;aspect-ratio:1;display:block;background:#fff;image-rendering:pixelated}
+.kiosk-qr-card img:not([src]){visibility:hidden}
+.kiosk-qr-card p{margin-top:8px;font-weight:900;font-size:clamp(20px,2.2vw,32px);letter-spacing:-.03em;color:#000}
 .kiosk-shell{height:100dvh;display:grid;grid-template-rows:auto 1fr;padding:10px 18px 14px}
 .kiosk-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .kiosk-top .logo img{height:52px}
@@ -175,6 +185,7 @@ body.kiosk{height:100dvh;overflow:hidden;background:radial-gradient(90% 80% at 7
 @keyframes shake{25%{transform:translateX(-4px)}50%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
 @media(max-width:980px){
   body.kiosk{height:auto;overflow:auto}
+  .kiosk-scroll{height:auto;overflow:visible}
   .kiosk-shell{height:auto}
   .kiosk-main{grid-template-columns:1fr}
   .kiosk .wheel-box{width:min(86vw,460px);margin:10px auto}
@@ -215,4 +226,18 @@ table.gridish tr.detail td{white-space:normal;background:#FFFCF8}
 .login-card{max-width:420px;margin:8vh auto;padding:28px}
 .outbox{display:grid;gap:8px;margin-top:8px}
 .outbox details{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 12px}
-@media(max-width:900px){.split{grid-template-columns:1fr}.qr-card{grid-template-columns:1fr}}
+.led-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;align-items:start;margin-top:14px}
+.pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pos-grid button{height:42px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:800;font-size:13px}
+.pos-grid button.on{background:var(--grad);color:#fff;border-color:transparent}
+.led-size{width:100%;accent-color:var(--or)}
+.led-preview{background:#1B0F33;border-radius:18px;padding:12px;min-height:320px}
+.led-screen{background:#FFF8F1;border-radius:12px;min-height:296px;display:flex;flex-direction:column;gap:8px;padding:12px}
+.led-screen.left{align-items:flex-start}
+.led-screen.right{align-items:flex-end}
+.led-screen.center{align-items:center}
+.led-screen.bottom{flex-direction:column-reverse}
+.led-screen img{width:var(--preview-size,42%);height:auto;background:#fff;border-radius:8px;border:4px solid #fff}
+.led-screen p{font-weight:900;font-size:13px;text-align:center}
+.led-fake{width:100%;border-radius:10px;background:#fff;border:1px dashed var(--line);color:var(--mut);font-size:12px;font-weight:800;padding:14px;text-align:center}
+@media(max-width:900px){.split,.led-grid{grid-template-columns:1fr}.qr-card{grid-template-columns:1fr}}

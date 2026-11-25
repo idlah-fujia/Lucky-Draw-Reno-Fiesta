@@ -97,7 +97,7 @@ export function codeEmail({ entry, spinUrl, whatsapp }) {
     `Date attended: ${entry.event_date}`,
     `Name: ${entry.homeowner_name}`,
     '',
-    'The code works once. Your interior designer enters their details on the big screen, then you spin.',
+    'The code works once. Type it on the big screen and spin. The designer’s details are already saved with this entry.',
     `Questions? WhatsApp https://wa.me/${whatsapp}`
   ].join('\n')
   const html = wrapHtml(`
@@ -108,7 +108,7 @@ export function codeEmail({ entry, spinUrl, whatsapp }) {
     <p><b>Event.</b> ${escapeHtml(entry.event_name)}${entry.event_edition ? ` (${escapeHtml(entry.event_edition)})` : ''}<br>
     <b>Date attended.</b> ${escapeHtml(entry.event_date)}<br>
     <b>Name.</b> ${escapeHtml(entry.homeowner_name)}</p>
-    <p>Your interior designer enters their details on the big screen, then you spin. Questions? <a href="https://wa.me/${whatsapp}">WhatsApp us</a>.</p>
+    <p>Type the code on the big screen and spin. The designer’s details are already saved with this entry. Questions? <a href="https://wa.me/${whatsapp}">WhatsApp us</a>.</p>
   `)
   return { to: entry.homeowner_email, subject, text, html }
 }
@@ -126,7 +126,7 @@ export function resultEmails({ entry, spinUrl, whatsapp }) {
     `Interior designer: ${entry.designer_name}, ${entry.designer_phone}, ${entry.designer_email}`,
     `ID company: ${entry.id_company}`,
     '',
-    'The prize is delivered to the interior designer within 2 weeks. The designer passes it to the homeowner once the signed contract is confirmed. If the contract is cancelled, the prize must be returned to IDLah.',
+    'The prize is delivered to the interior designer. The designer passes it to the homeowner once the signed contract is confirmed. If the contract is cancelled, the prize must be returned to IDLah.',
     `Spin page: ${spinUrl}`,
     `Questions? WhatsApp https://wa.me/${whatsapp}`
   ].join('\n')
@@ -140,7 +140,7 @@ export function resultEmails({ entry, spinUrl, whatsapp }) {
     <b>Prize delivery address.</b> ${escapeHtml(entry.delivery_address)}</p>
     <p><b>Interior designer.</b> ${escapeHtml(entry.designer_name)} · ${escapeHtml(entry.designer_phone)} · ${escapeHtml(entry.designer_email)}<br>
     <b>ID company.</b> ${escapeHtml(entry.id_company)}</p>
-    <p>The prize is delivered to the interior designer within 2 weeks, and handed to the homeowner once the signed contract is confirmed. If the contract is cancelled, the prize must be returned to IDLah.</p>
+    <p>The prize is delivered to the interior designer, and handed to the homeowner once the signed contract is confirmed. If the contract is cancelled, the prize must be returned to IDLah.</p>
     <p><a href="${escapeHtml(spinUrl)}">Spin page</a> · <a href="https://wa.me/${whatsapp}">WhatsApp us</a></p>
   `)
   const recipients = [entry.homeowner_email]

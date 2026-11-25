@@ -3,18 +3,21 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import vm from 'node:vm'
 import { createApp } from '../src/app.js'
+import { getConfig } from '../src/config.js'
 import { LocalStore } from '../src/storage/local.js'
 import { LocalFiles } from '../src/files.js'
 import { todaySGT } from '../src/http.js'
 import { formatCode } from '../src/codes.js'
+import { envKioskQr } from '../src/kioskQr.js'
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 
 function testConfig() {
   return {
     whatsapp: '6588949268',
-    kioskResetSeconds: 25,
+    kioskResetSeconds: 120,
     invalidResetSeconds: 12,
     idleResetSeconds: 90,
     events: [
@@ -75,9 +78,16 @@ function entryForm(overrides = {}) {
     decl_genuine: 'yes',
     decl_verify: 'yes',
     tnc: 'yes',
+    designer_name: 'Alicia Ong',
+    designer_phone: '62345678',
+    designer_email: 'alicia@studio.example',
+    id_company: 'Studio Example',
     ...overrides
   }
-  for (const [key, value] of Object.entries(fields)) data.set(key, value)
+  for (const [key, value] of Object.entries(fields)) {
+    if (value == null || key === 'proof') continue
+    data.set(key, value)
+  }
   const file = overrides.proof === null ? null : new File([png], 'receipt.png', { type: 'image/png' })
   if (file) data.set('proof', file)
   return data
@@ -89,25 +99,66 @@ async function json(res) {
 }
 
 test('submit, designer, one spin, then the same code shows the prize', async () => {
-  const { app, sent } = await build()
+  const { app, sent, store } = await build()
   const created = await json(await app.request('/api/entries', { method: 'POST', body: entryForm() }))
   assert.equal(created.status, 200)
   assert.equal(created.body.code.length, 8)
   assert.equal(created.body.email, 'mei@example.com')
   assert.equal(created.body.emailStatus, 'logged')
   assert.equal(sent.records.length, 1)
+  assert.equal(sent.records[0].to, 'mei@example.com')
   assert.match(sent.records[0].text, /big screen/)
   assert.match(sent.records[0].text, new RegExp(formatCode(created.body.code)))
   assert.doesNotMatch(sent.records[0].text, /undefined/)
+  assert.equal(sent.records.some((record) => record.to === 'alicia@studio.example'), false)
 
   const dup = await json(await app.request('/api/entries', { method: 'POST', body: entryForm() }))
   assert.equal(dup.status, 409)
 
-  const missingDesigner = await json(await app.request('/api/spin/go', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code: created.body.code, event: 'reno-fiesta-nov-2026' })
+  const samePhone = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ homeowner_phone: '82345678', designer_phone: '82345678', homeowner_email: 'other@example.com' })
   }))
-  assert.equal(missingDesigner.status, 400)
+  assert.equal(samePhone.status, 400)
+
+  const bare = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({
+      homeowner_phone: '83345678',
+      homeowner_email: 'bare@example.com',
+      designer_name: null,
+      designer_phone: null,
+      designer_email: null,
+      id_company: null
+    })
+  }))
+  assert.equal(bare.status, 400)
+
+  const old = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ homeowner_phone: '84345678', homeowner_name: 'Old Entry', homeowner_email: 'old@example.com' })
+  }))
+  assert.equal(old.status, 200, old.body.error)
+  await store.transaction((list) => {
+    const row = list.find((item) => item.code === old.body.code)
+    row.designer_name = ''
+    row.designer_phone = ''
+    row.designer_email = ''
+    row.id_company = ''
+    row.designer_saved_at = ''
+  })
+  const blockedSpin = await json(await app.request('/api/spin/go', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: old.body.code, event: 'reno-fiesta-nov-2026' })
+  }))
+  assert.equal(blockedSpin.status, 400)
+  assert.match(blockedSpin.body.error, /designer/i)
+  const blockedLookup = await json(await app.request('/api/spin/lookup', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: old.body.code, event: 'reno-fiesta-nov-2026' })
+  }))
+  assert.equal(blockedLookup.body.state, 'needs_designer')
+  assert.equal(blockedLookup.body.canContinue, false)
 
   const noEvent = await json(await app.request('/api/spin/lookup', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -120,24 +171,11 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
     body: JSON.stringify({ code: `${created.body.code.slice(0, 4)} ${created.body.code.slice(4)}`, event: 'reno-fiesta-nov-2026' })
   }))
   assert.equal(lookup.status, 200)
-  assert.equal(lookup.body.state, 'needs_designer')
+  assert.equal(lookup.body.state, 'ready')
   assert.equal(lookup.body.canContinue, true)
   assert.equal(lookup.body.firstName, 'Mei')
+  assert.equal(lookup.body.designer.name, 'Alicia Ong')
   assert.equal(lookup.body.homeowner_phone, undefined)
-
-  const saved = await json(await app.request('/api/spin/designer', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      code: created.body.code,
-      event: 'reno-fiesta-nov-2026',
-      designer_name: 'Alicia Ong',
-      designer_phone: '62345678',
-      designer_email: 'alicia@studio.example',
-      id_company: 'Studio Example'
-    })
-  }))
-  assert.equal(saved.body.state, 'ready')
-  assert.equal(saved.body.canContinue, true)
 
   const spun = await json(await app.request('/api/spin/go', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -147,7 +185,9 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   assert.equal(spun.body.result.prizeId, 'GRAB40')
   assert.equal(spun.body.result.slot >= 0, true)
   assert.equal(spun.body.already, false)
-  assert.equal(sent.records.length, 3)
+  assert.equal(sent.records.length, 4)
+  assert.equal(sent.records.filter((record) => record.to === 'alicia@studio.example').length, 1)
+  assert.equal(sent.records.filter((record) => record.to === 'mei@example.com').length, 2)
 
   const again = await json(await app.request('/api/spin/lookup', {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -163,7 +203,7 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   }))
   assert.equal(secondSpin.body.already, true)
   assert.equal(secondSpin.body.result.prizeId, 'GRAB40')
-  assert.equal(sent.records.length, 3)
+  assert.equal(sent.records.length, 4)
 })
 
 test('iphone can be won once, a void frees it, and admin can export', async () => {
@@ -174,13 +214,6 @@ test('iphone can be won once, a void frees it, and admin can export', async () =
       body: entryForm({ homeowner_phone: phone, homeowner_name: name, homeowner_email: `${phone}@example.com` })
     }))
     assert.equal(created.status, 200, created.body.error)
-    await json(await app.request('/api/spin/designer', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        code: created.body.code, event: 'reno-fiesta-nov-2026', designer_name: 'Alicia Ong', designer_phone: '62345678',
-        designer_email: 'alicia@studio.example', id_company: 'Studio Example'
-      })
-    }))
     return created.body.code
   }
   const first = await signup('81234567', 'Mei Lin')
@@ -218,6 +251,8 @@ test('iphone can be won once, a void frees it, and admin can export', async () =
   const csv = await csvRes.text()
   assert.match(csv, new RegExp(first))
   assert.match(csv, /Mei Lin/)
+  assert.match(csv, /Alicia Ong/)
+  assert.match(csv, /Studio Example/)
 
   const voided = await json(await app.request(`/api/admin/entries/${iphone.id}`, {
     method: 'POST', headers: { cookie, 'content-type': 'application/json' },
@@ -280,14 +315,6 @@ test('two spins at once cannot both take the iPhone', async () => {
       body: entryForm({ homeowner_phone: phone, homeowner_name: `Home ${phone}`, homeowner_email: `${phone}@example.com` })
     }))
     assert.equal(created.status, 200, created.body.error)
-    const saved = await json(await app.request('/api/spin/designer', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        code: created.body.code, event: 'reno-fiesta-nov-2026', designer_name: 'Alicia Ong',
-        designer_phone: '62345678', designer_email: 'alicia@studio.example', id_company: 'Studio Example'
-      })
-    }))
-    assert.equal(saved.body.canContinue, true)
     return created.body.code
   }
   const codes = await Promise.all(['81000001', '81000002', '81000003', '81000004'].map(readyCode))
@@ -306,4 +333,131 @@ test('two spins at once cannot both take the iPhone', async () => {
   const blocked = results.filter((result) => result.status === 409)
   assert.equal(blocked.length, 3)
   assert.match(blocked[0].body.error, /fully redeemed/i)
+})
+
+test('the phone form lists events, and the server keeps the date inside that event', async () => {
+  const { app } = await build()
+  const home = await app.request('/')
+  const html = await home.text()
+  assert.equal(home.status, 200)
+  assert.match(html, /id="eventSlot"/)
+  assert.match(html, /id="dateSlot"/)
+  assert.match(html, /data-testid="step-designer"/)
+  assert.match(html, /Submit &amp; get my spin code/)
+  assert.doesNotMatch(html, /Filled in by the homeowner/i)
+  assert.doesNotMatch(html, /type="date"/)
+  const register = await app.request('/register')
+  assert.equal(register.status, 200)
+  assert.match(await register.text(), /id="eventSlot"/)
+
+  const early = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ event_date: '2019-06-01' })
+  }))
+  assert.equal(early.status, 400)
+  assert.match(early.body.error, /before the event/)
+
+  const unknown = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ event_slug: 'no-such-event' })
+  }))
+  assert.equal(unknown.status, 400)
+  assert.match(unknown.body.error, /event/i)
+})
+
+test('kiosk QR uses the event form URL, and admin can save size and position', async () => {
+  const { app } = await build()
+  const headers = { host: 'lucky-draw-reno-fiesta.onrender.com', 'x-forwarded-proto': 'https' }
+  const base = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://lucky-draw-reno-fiesta.onrender.com').replace(/\/$/, '')
+  const fallback = envKioskQr()
+
+  const display = await json(await app.request('/api/kiosk/display?event=reno-fiesta-nov-2026', { headers }))
+  assert.equal(display.status, 200)
+  assert.equal(display.body.event.slug, 'reno-fiesta-nov-2026')
+  assert.equal(display.body.formUrl, `${base}/e/reno-fiesta-nov-2026`)
+  assert.equal(display.body.qr.size, fallback.size)
+  assert.equal(display.body.qr.position, fallback.position)
+
+  const bare = await json(await app.request('/api/kiosk/display', { headers }))
+  assert.equal(bare.body.event.slug, 'reno-fiesta-nov-2026')
+  assert.equal(bare.body.formUrl, `${base}/e/reno-fiesta-nov-2026`)
+
+  const png = await app.request('/api/kiosk/qr.png?event=reno-fiesta-nov-2026', { headers })
+  assert.equal(png.status, 200)
+  assert.equal(png.headers.get('content-type'), 'image/png')
+  const bytes = Buffer.from(await png.arrayBuffer())
+  assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a')
+
+  const missing = await json(await app.request('/api/kiosk/display?event=no-such-event'))
+  assert.equal(missing.status, 404)
+
+  const denied = await app.request('/api/admin/kiosk-qr', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' })
+  assert.equal(denied.status, 401)
+
+  const login = await app.request('/api/admin/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: 'test-password-1' })
+  })
+  const cookie = login.headers.get('set-cookie').split(';')[0]
+  const bad = await json(await app.request('/api/admin/kiosk-qr', {
+    method: 'PUT',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ event: 'reno-fiesta-nov-2026', size: 5, unit: 'percent', position: 'top-center' })
+  }))
+  assert.equal(bad.status, 400)
+
+  const saved = await json(await app.request('/api/admin/kiosk-qr', {
+    method: 'PUT',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ event: 'closed-fest', size: 220, unit: 'px', position: 'top-left' })
+  }))
+  assert.equal(saved.status, 200, saved.body.error)
+  const closed = await json(await app.request('/api/kiosk/display?event=closed-fest'))
+  assert.equal(closed.body.qr.size, 220)
+  assert.equal(closed.body.qr.unit, 'px')
+  assert.equal(closed.body.qr.position, 'top-left')
+  assert.equal(closed.body.qr.source, 'event')
+  assert.equal(closed.body.formUrl.endsWith('/e/closed-fest'), true)
+
+  const global = await json(await app.request('/api/admin/kiosk-qr', {
+    method: 'PUT',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ event: '', size: 40, unit: 'percent', position: 'bottom-center' })
+  }))
+  assert.equal(global.status, 200)
+  const reno = await json(await app.request('/api/kiosk/display?event=reno-fiesta-nov-2026'))
+  assert.equal(reno.body.qr.size, 40)
+  assert.equal(reno.body.qr.position, 'bottom-center')
+  assert.equal(reno.body.qr.source, 'global')
+  const still = await json(await app.request('/api/kiosk/display?event=closed-fest'))
+  assert.equal(still.body.qr.position, 'top-left')
+
+  const page = await app.request('/spin?event=reno-fiesta-nov-2026')
+  const spinHtml = await page.text()
+  assert.match(spinHtml, /id="kioskQr"/)
+  assert.match(spinHtml, /Scan to register for your spin/)
+  assert.match(spinHtml, />Close</)
+})
+
+test('the prize pop-up stays for two minutes and counts down as m:ss', async () => {
+  const config = getConfig()
+  assert.equal(config.kioskResetSeconds, 120)
+  assert.equal(config.idleResetSeconds, 90)
+  assert.ok(config.kioskResetSeconds > config.idleResetSeconds)
+
+  const { app } = await build()
+  const boot = await json(await app.request('/api/bootstrap'))
+  assert.equal(boot.body.kioskResetSeconds, 120)
+  assert.equal(boot.body.idleResetSeconds, 90)
+
+  const source = fs.readFileSync(new URL('../public/js/kiosk.js', import.meta.url), 'utf8')
+  assert.match(source, /if \(mode === 'spinning' \|\| mode === 'result'\) return/)
+  assert.match(source, /startCountdown\(boot\.kioskResetSeconds \|\| 120, 'Closing in', \$\('count'\), true\)/)
+  const fn = source.match(/function closingClock\(seconds\) \{[\s\S]*?\n  \}/)
+  assert.ok(fn)
+  const closingClock = vm.runInNewContext(`${fn[0]}\nclosingClock`)
+  assert.equal(`Closing in ${closingClock(120)}`, 'Closing in 2:00')
+  assert.equal(`Closing in ${closingClock(119)}`, 'Closing in 1:59')
+  assert.equal(`Closing in ${closingClock(5)}`, 'Closing in 0:05')
+  assert.equal(`Closing in ${closingClock(0)}`, 'Closing in 0:00')
 })

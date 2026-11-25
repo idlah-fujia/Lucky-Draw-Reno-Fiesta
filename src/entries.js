@@ -58,8 +58,8 @@ export function spinEntry(list, code, prize, nowIso, config, eventSlug) {
     throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
   }
   if (entry.prize_id) return { entry, already: true }
-  if (!entry.designer_name || !entry.designer_email || !entry.id_company) {
-    throw new HttpError(400, 'Enter the interior designer’s details before spinning.')
+  if (!entry.designer_name || !entry.designer_phone || !entry.designer_email || !entry.id_company) {
+    throw new HttpError(400, 'This code has no interior designer on it, so it can’t spin. Please see the IDLah booth.')
   }
   const sold = soldOutIds(list, entry.event_slug, config)
   if (prize.oncePerEvent && sold.includes(prize.id)) {
@@ -144,7 +144,7 @@ export function kioskView(entry, config) {
       }
     }
   }
-  const designerReady = !!(entry.designer_name && entry.designer_email && entry.id_company)
+  const designerReady = !!(entry.designer_name && entry.designer_phone && entry.designer_email && entry.id_company)
   return {
     ...base,
     state: designerReady ? 'ready' : 'needs_designer',
@@ -160,6 +160,6 @@ export function attachSoldOut(view, list, config) {
     ...view,
     soldOut,
     iphoneRedeemed: soldOut.includes('IPHONE'),
-    canContinue: view.state === 'needs_designer' || view.state === 'ready'
+    canContinue: view.state === 'ready'
   }
 }

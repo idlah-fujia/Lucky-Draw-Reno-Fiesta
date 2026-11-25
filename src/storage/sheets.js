@@ -2,6 +2,8 @@ import { createSign } from 'node:crypto'
 import { COLUMNS, cloneEntry, entryToRow, rowToEntry } from '../schema.js'
 
 const SHEET = 'Entries'
+const KIOSK_SHEET = 'KioskQr'
+const KIOSK_COLUMNS = ['event_slug', 'size', 'unit', 'position', 'updated_at']
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 function privateKey() {
@@ -32,6 +34,7 @@ export class SheetsStore {
     this.cache = []
     this.rowNumbers = new Map()
     this.chain = Promise.resolve()
+    this.kioskChain = Promise.resolve()
     this.loaded = false
     this.token = null
     this.tokenExp = 0
@@ -108,15 +111,19 @@ export class SheetsStore {
     return json
   }
 
-  async ensureSheet() {
+  async ensureTab(title) {
     const meta = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}?fields=sheets.properties.title`)
     const titles = (meta.sheets || []).map((sheet) => sheet.properties.title)
-    if (!titles.includes(SHEET)) {
+    if (!titles.includes(title)) {
       await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}:batchUpdate`, {
         method: 'POST',
-        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SHEET } } }] })
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] })
       })
     }
+  }
+
+  async ensureSheet() {
+    await this.ensureTab(SHEET)
   }
 
   async reload() {
@@ -182,6 +189,67 @@ export class SheetsStore {
       return result
     })
     this.chain = run.then(() => {}, () => {})
+    return run
+  }
+
+  async readKioskQr() {
+    await this.ensureTab(KIOSK_SHEET)
+    const range = encodeURIComponent(`${KIOSK_SHEET}!A1:E`)
+    const data = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}`)
+    const values = data.values || []
+    if (values.length === 0) {
+      await this.writeKioskRows([KIOSK_COLUMNS])
+      return {}
+    }
+    const header = values[0]
+    const sameHeader = KIOSK_COLUMNS.every((key, index) => header[index] === key)
+    if (!sameHeader) {
+      throw new Error('The KioskQr tab already has a different header row. Rename that tab, then restart. This app will write its own column names.')
+    }
+    const map = {}
+    for (const row of values.slice(1)) {
+      const slug = row[0]
+      if (!slug) continue
+      map[slug] = {
+        size: Number(row[1]),
+        unit: row[2] || '',
+        position: row[3] || '',
+        updatedAt: row[4] || ''
+      }
+    }
+    return map
+  }
+
+  async writeKioskRows(rows) {
+    const range = encodeURIComponent(`${KIOSK_SHEET}!A1`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      { method: 'PUT', body: JSON.stringify({ values: rows }) }
+    )
+  }
+
+  async writeKioskQr(map) {
+    await this.ensureTab(KIOSK_SHEET)
+    const rows = [KIOSK_COLUMNS]
+    for (const [slug, value] of Object.entries(map)) {
+      rows.push([slug, String(value.size), value.unit, value.position, value.updatedAt || ''])
+    }
+    const clearRange = encodeURIComponent(`${KIOSK_SHEET}!A:E`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${clearRange}:clear`,
+      { method: 'POST' }
+    )
+    await this.writeKioskRows(rows)
+  }
+
+  async updateKioskQr(eventKey, value) {
+    const run = this.kioskChain.then(async () => {
+      const map = await this.readKioskQr()
+      map[eventKey] = value
+      await this.writeKioskQr(map)
+      return map
+    })
+    this.kioskChain = run.then(() => {}, () => {})
     return run
   }
 

@@ -44,7 +44,9 @@ export function emailAddress(value, label) {
 
 export function eventDate(value, event, now = new Date()) {
   const date = String(value || '').trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, 'Enter the date you attended.')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !realCalendarDay(date)) {
+    throw new HttpError(400, 'Choose a date from that event.')
+  }
   const today = todaySGT(now)
   if (date > today) throw new HttpError(400, 'The date you attended can’t be in the future.')
   if (event.starts && date < event.starts) {
@@ -54,6 +56,12 @@ export function eventDate(value, event, now = new Date()) {
     throw new HttpError(400, `${event.name} runs until ${event.ends}. That date is after the event.`)
   }
   return date
+}
+
+function realCalendarDay(iso) {
+  const [year, month, day] = iso.split('-').map(Number)
+  const utc = new Date(Date.UTC(year, month - 1, day))
+  return utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day
 }
 
 export function requireYes(value, message) {

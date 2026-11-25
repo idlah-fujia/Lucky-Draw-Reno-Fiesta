@@ -2,28 +2,30 @@
 
 Phone signup and a big-screen prize wheel for IDLah’s Reno Fiesta and HomeFest events.
 
-A homeowner scans a QR code, fills in the form on their own phone, and gets an 8-character code. They walk to the LED screen, type that code, the interior designer adds their details, and the wheel spins once. The prize is chosen by the server. Staff review entries at `/admin`.
+Someone fills the phone form for a homeowner: homeowner details, then the interior designer’s details, in one submission. The homeowner gets an 8-character code by email. At the LED screen they type that code and the wheel unlocks straight away. The prize is chosen by the server. Staff review entries at `/admin`.
 
 This is a new site. It copies the look of the current Sure-Win page (navy, gold, orange, pink, the 32-slice wheel, the otters) and replaces the single-page demo with this two-step flow.
 
 ## The two pages
 
-**Page 1, on the homeowner’s phone** (`/e/your-event` or `/?event=your-event`)
+**Page 1, on a phone** (`/e/your-event`, `/`, or `/register`)
 
-- Event (filled in by the QR code) and the date they attended
-- Homeowner name, mobile, email, and the prize delivery address
-- One photo or PDF of the receipt or signed contract (max 10 MB)
-- The declarations and the same prize terms as the current spin page
-- On submit: one row is saved, a code is shown, and the homeowner is emailed the code plus the link to the big screen
+- Event dropdown from `config/spin.config.json`. `/e/your-event` and `/?event=your-event` preselect that event, and it can still be changed. `/` and `/register` start with no event chosen.
+- Event date comes from that event. A one-day event is filled in and locked. A multi-day event is a dropdown of those days. There is no free-typed date.
+- Step 1, homeowner details: name, mobile, email, prize delivery address, one photo or PDF of the receipt or signed contract (max 10 MB), and the declarations. **Next** checks this step in the browser and does not call the server. The chosen file stays selected.
+- Step 2, designer details: name, mobile, email, and interior design company. **Back** returns to step 1 without clearing it. **Submit & get my spin code** sends homeowner, designer, and proof in one request.
+- On submit: one row is saved, including the designer. A code is shown. Only the homeowner is emailed the code. The designer is emailed later, with the homeowner, after the spin.
 
 **Page 2, on the LED screen** (`/spin?event=your-event`)
 
+- A large registration QR at the top (staff can move and resize it). It encodes this event’s phone form, for example `https://YOUR-DOMAIN/e/reno-fiesta-nov-2026`. The address comes from `PUBLIC_BASE_URL`, then `RENDER_EXTERNAL_URL`, then the request host. It is not hardcoded. With no `?event=`, the first open event is used.
+
 - No file upload and nothing stored only in that browser
-- Large keypad for the code. The server checks that the code exists, belongs to this screen’s event, has not been used, and is not voided. Only then does the screen move on to the designer’s details and the wheel. Staff do not have to approve the entry first
+- Large keypad for the code. The server checks that the code exists, belongs to this screen’s event, has designer details saved, has not been used, and is not voided. The wheel then unlocks. There is no designer form on this screen. A code saved without a designer is turned away. Staff do not have to approve the entry first
 - One spin. The prize is picked on the server from the weights in `config/spin.config.json`
 - The iPhone can be won once per event. The server checks that inside the same locked save as the spin, so two spins at once cannot both take it. After it has been won, that slice says FULLY REDEEMED and it cannot be awarded again
 - Typing a code that already spun shows the prize again. It does not spin again
-- About 25 seconds after the result (or the Next homeowner button), the screen returns to the keypad
+- Two minutes after the result (or the Close button), the screen returns to the keypad. The pop-up counts down as “Closing in 2:00”, then “Closing in 1:59”. Change `kioskResetSeconds` to use a different length.
 - The page asks the display to stay awake and pings the server every 45 seconds so a long event day does not drop the connection
 
 ## Run it on a computer
@@ -77,7 +79,7 @@ Safe edits:
 
 - `weight` on each prize. Higher means more likely. `0` takes it off the wheel.
 - `events`: add a row per festival or per day. `slug` is the short name in the URL (`reno-fiesta-nov-2026`). Use lowercase letters, numbers, and hyphens. `active: false` closes the phone form.
-- `kioskResetSeconds` (default 25), `invalidResetSeconds` (12), `idleResetSeconds` (90).
+- `kioskResetSeconds` (default 120, the result pop-up), `invalidResetSeconds` (12), `idleResetSeconds` (90, code entry only; it does not close the result pop-up).
 
 The numbers shipped in the file are **placeholders**, not approved odds. With those weights the iPhone is about **1 in 865** spins, and only once per event. Change the weights, run `npm run check`, and read the “1 in …” lines. The admin page shows the same table.
 
@@ -94,9 +96,29 @@ https://YOUR-DOMAIN/e/homefest-2026
 
 On the admin page, each event has a QR image and a **Download PNG** link. Print it at least 4 × 4 cm. High error correction is already set, so it still scans with a logo-sized quiet zone.
 
-Any QR generator works too. Put that exact URL in, download a PNG, and print it. The big screen is a different URL (`/spin?event=same-slug`), not the QR. The QR is only for the phone form.
+Any QR generator works too. Put that exact URL in, download a PNG, and print it. The big screen is a different URL (`/spin?event=same-slug`). That page also shows the same phone-form QR, large enough to scan from the LED.
 
-Opening `/` with no event shows a dropdown of open events. The QR is the normal way in.
+Opening `/` or `/register` with no event shows the event dropdown and does not preselect one. `/e/your-event` preselects that event.
+
+### LED screen QR size and position
+
+On `/admin`, **LED screen QR** sets the size and the position for the big screen. Size is 16–70% of the screen width, or 160–900 px. Position is top left, top centre, top right, bottom left, bottom centre, or bottom right. The preview updates as you move the controls. **Save** writes the choice. The screen asks for the current setting every 20 seconds, and also when it resets for the next person. No rebuild.
+
+Settings are per event, or “All events (default)” when an event has no row of its own. An event row wins over the default row.
+
+Where they are stored:
+
+- **Google Sheet connected:** a tab named **KioskQr** (`event_slug`, `size`, `unit`, `position`, `updated_at`). The app creates the tab. This survives a Render restart.
+- **No sheet:** `data/kiosk-qr.json` next to the entries file. Render’s free disk is wiped on restart, so this file does not survive a deploy or a spin-down.
+
+Env defaults, used when nothing is saved (and after a wiped disk):
+
+| Variable | Example | Meaning |
+| --- | --- | --- |
+| `KIOSK_QR_SIZE` | `34%` or `480px` | Percent of screen width (16–70) or pixels (160–900). A bare number is a percent. |
+| `KIOSK_QR_POSITION` | `top-center` | `top-left`, `top-center`, `top-right`, `bottom-left`, `bottom-center`, `bottom-right`. `centre` is accepted. |
+
+Set both on the Render service if you want a restart to keep a size when Sheets is not connected. A saved admin value overrides these until that store is wiped. The admin routes require the admin password.
 
 ## Email
 
@@ -198,6 +220,8 @@ Environment variables the Blueprint sets:
 
 Leave `PUBLIC_BASE_URL` blank on the first deploy. The app uses Render’s `RENDER_EXTERNAL_URL` for QR codes and email links. After you add a custom domain, set `PUBLIC_BASE_URL` to `https://that-domain` with no slash at the end.
 
+Optional, so the LED QR keeps its size after a free-plan restart when Google Sheets is not connected: `KIOSK_QR_SIZE` and `KIOSK_QR_POSITION`. See “LED screen QR size and position”.
+
 Optional, add in the Render dashboard when you have them. Leave them empty for the trial:
 
 - `RESEND_API_KEY`, `EMAIL_FROM`
@@ -255,11 +279,12 @@ Also:
 
 - Power settings: screen never sleeps while plugged in. The page also asks the browser to stay awake, and pings the server every 45 seconds.
 - Sound on. The wheel ticks and plays a short fanfare. The first tap of the day starts audio; the Chrome flag above allows it without that tap. Tap **Sound on** in the corner if the hall is too loud.
-- One screen per event, using that event’s `?event=` link. A code from another event is turned away.
+- One screen per event, using that event’s `?event=` link. A code from another event is turned away. If the link has no event, the first open event is used and the address bar is updated.
+- The registration QR sits at the top (unless staff moved it). Scrolling the page reaches the keypad and the wheel. After a reset the page returns to the QR.
 - Leave the page open all day. Refresh it in the morning, not while someone is at the wheel. A refresh only clears what has not been saved; a finished spin is already on the server.
 - **Fill the screen** in the corner does the same job if you are not using the kiosk shortcut.
-- There is an on-screen keypad for the code and a keyboard for the designer’s name and email, so the PC does not need a keyboard. A real keyboard still works.
-- If nobody touches the screen for 90 seconds during code entry, it clears itself. After a prize, it clears in 25 seconds, or sooner with **Next homeowner**.
+- There is an on-screen keypad for the code, so the PC does not need a keyboard. A real keyboard still works. Designer details are entered on the phone, not on this screen.
+- If nobody touches the screen for 90 seconds during code entry, it clears itself. That idle timer does not run while the prize pop-up is open. After a prize, the pop-up closes in 2 minutes (`kioskResetSeconds`), or sooner with **Close**. The countdown reads “Closing in 2:00”.
 
 ## Codes
 
@@ -274,7 +299,7 @@ Eight characters. The alphabet skips O, 0, I, 1, and L so they are easy to read 
 ## Questions for the team
 
 1. **Odds.** The weights are placeholders (iPhone about 1 in 865). What should the real odds be?
-2. **QR.** One QR per event is the main path. The bare `/` page still has an event dropdown. Should that dropdown be removed?
+2. **QR.** One printed QR per event is still the main path. `/` and `/register` keep an event dropdown with nothing preselected, for people filling the form after the event.
 3. **WhatsApp.** The code is emailed, not sent on WhatsApp. Should it also be sent on WhatsApp?
 4. **Voids.** A voided mobile can submit again. Should it stay blocked?
 5. **Declarations.** The terms text matches the current site. The three tick boxes are worded for the homeowner, because they fill in page 1. Please confirm that is what legal wants.

@@ -8,8 +8,9 @@
   var lock = document.getElementById('lock');
   var note = document.getElementById('stageNote');
   var modal = document.getElementById('modal');
-  var boot = { slots: [], kioskResetSeconds: 25, invalidResetSeconds: 12, idleResetSeconds: 90, whatsapp: '6588949268' };
+  var boot = { slots: [], kioskResetSeconds: 120, invalidResetSeconds: 12, idleResetSeconds: 90, whatsapp: '6588949268' };
   var screenEvent = new URLSearchParams(location.search).get('event') || '';
+  var qrPosition = 'top-center';
   var mode = 'code';
   var code = '';
   var entry = null;
@@ -20,8 +21,6 @@
   var idleTimer = null;
   var countLeft = 0;
   var AC = null;
-  var focused = null;
-  var caps = true;
 
   function esc(s) {
     return String(s || '').replace(/[&<>"']/g, function (c) {
@@ -98,14 +97,23 @@
   }
   function armIdle() {
     clearTimeout(idleTimer);
+    idleTimer = null;
+    // The result pop-up uses kioskResetSeconds (2 minutes). The shorter idle
+    // timer must not dismiss that pop-up, including after a tap on the screen.
     if (mode === 'spinning' || mode === 'result') return;
     idleTimer = setTimeout(resetAll, (boot.idleResetSeconds || 90) * 1000);
   }
-  function startCountdown(seconds, label, el) {
+  function closingClock(seconds) {
+    var whole = Math.max(0, Math.floor(Number(seconds) || 0));
+    var minutes = Math.floor(whole / 60);
+    var rest = whole % 60;
+    return minutes + ':' + (rest < 10 ? '0' : '') + rest;
+  }
+  function startCountdown(seconds, label, el, asClock) {
     clearTimeout(resetTimer);
     countLeft = seconds;
     var step = function () {
-      if (el) el.textContent = label + ' ' + countLeft + 's';
+      if (el) el.textContent = label + ' ' + (asClock ? closingClock(countLeft) : countLeft + 's');
       if (countLeft <= 0) { resetAll(); return; }
       countLeft -= 1;
       resetTimer = setTimeout(step, 1000);
@@ -218,9 +226,10 @@
       entry = view;
       if (view.state === 'voided') return showProblem('This code has been voided', 'Please see the IDLah booth. This spin can’t be used.', false);
       if (view.state === 'spun') return showAlready(view);
-      if (view.canContinue !== true) return showProblem('Code not accepted', 'The server did not confirm this code. Please try again.', true);
-      if (view.state === 'ready') return showReady(view);
-      if (view.state === 'needs_designer') return showDesigner(view);
+      if (view.state === 'needs_designer') {
+        return showProblem('Designer details missing', 'This code has no interior designer on it, so it can’t spin. Please see the IDLah booth.', true);
+      }
+      if (view.state === 'ready' && view.canContinue === true) return showReady(view);
       showProblem('Code not accepted', 'The server did not confirm this code. Please try again.', true);
     }).catch(function (error) {
       showProblem(error.status === 404 ? 'Code not recognised' : 'Check that code', error.message, error.status === 404 || error.status === 400 || error.status === 409);
@@ -239,110 +248,6 @@
     $('againBtn').addEventListener('click', resetAll);
     if (countdown) startCountdown(boot.invalidResetSeconds || 12, 'Back to the start in', $('panelCount'));
     else armIdle();
-  }
-
-  function showDesigner(view) {
-    mode = 'designer';
-    clearTimers();
-    unlockWheel();
-    setSpin(false, 'Spin locked');
-    note.textContent = 'The wheel unlocks after the interior designer’s details are saved.';
-    panel.innerHTML =
-      '<div class="verified" data-testid="code-verified"><img src="/img/otter-6.webp" alt="" width="64" height="64"><div>Code verified for <b>' + esc(view.firstName) + '</b><br>Interior designer, enter your details.</div></div>' +
-      '<form id="designerForm" class="f">' +
-      '<label class="fl"><span>Designer name</span><input name="designer_name" data-pad="text" autocomplete="name" required></label>' +
-      '<label class="fl"><span>Designer mobile</span><div class="ph"><b>+65</b><input name="designer_phone" data-pad="num" inputmode="numeric" maxlength="8" required></div></label>' +
-      '<label class="fl"><span>Designer email</span><input name="designer_email" data-pad="email" inputmode="email" autocomplete="email" required></label>' +
-      '<label class="fl"><span>Interior design company</span><input name="id_company" data-pad="text" autocomplete="organization" required></label>' +
-      '<div class="err" id="panelErr"></div>' +
-      '<button class="go" type="submit" data-testid="save-designer">Save &amp; unlock the wheel</button>' +
-      '</form><div id="osk"></div>';
-    var form = $('designerForm');
-    form.addEventListener('focusin', function (e) {
-      if (e.target.matches('input')) {
-        focused = e.target;
-        renderKeyboard(e.target.dataset.pad || 'text');
-      }
-    });
-    form.designer_phone.addEventListener('input', function () {
-      this.value = this.value.replace(/\D/g, '').slice(0, 8);
-    });
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-      var button = form.querySelector('button[type="submit"]');
-      button.disabled = true;
-      button.textContent = 'Saving…';
-      api('/api/spin/designer', {
-        code: code,
-        event: screenEvent,
-        designer_name: form.designer_name.value,
-        designer_phone: form.designer_phone.value,
-        designer_email: form.designer_email.value,
-        id_company: form.id_company.value
-      }).then(function (next) {
-        if (!next || next.canContinue !== true) {
-          showProblem('Code not accepted', 'The server did not confirm this code. Please try again.', true);
-          return;
-        }
-        sold = next.soldOut || sold;
-        SureWinWheel.markSold(wheel, boot.slots, sold);
-        showReady(next);
-      }).catch(function (error) {
-        $('panelErr').textContent = error.message;
-        button.disabled = false;
-        button.textContent = 'Save & unlock the wheel';
-      });
-    });
-    armIdle();
-  }
-
-  function renderKeyboard(kind) {
-    var host = $('osk');
-    if (!host) return;
-    if (kind !== 'text') caps = false;
-    var rows;
-    if (kind === 'num') {
-      rows = [
-        ['1', '2', '3'],
-        ['4', '5', '6'],
-        ['7', '8', '9'],
-        ['clear', '0', 'back']
-      ];
-    } else if (kind === 'email') {
-      rows = [
-        'qwertyuiop',
-        'asdfghjkl',
-        'zxcvbnm',
-        ['@', '.', '-', '_', 'back']
-      ];
-    } else {
-      rows = [
-        'qwertyuiop',
-        'asdfghjkl',
-        ['caps', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'back'],
-        ['space']
-      ];
-    }
-    host.innerHTML = '<div class="osk">' + rows.map(function (row) {
-      var chars = typeof row === 'string' ? row.split('') : row;
-      return '<div class="row" style="grid-template-columns:repeat(' + chars.length + ',1fr)">' + chars.map(function (ch) {
-        var label = ch === 'back' ? '⌫' : ch === 'space' ? 'space' : ch === 'caps' ? (caps ? 'ABC' : 'abc') : ch === 'clear' ? 'Clear' : (caps && ch.length === 1 && /[a-z]/.test(ch) ? ch.toUpperCase() : ch);
-        return '<button type="button" data-k="' + ch + '">' + label + '</button>';
-      }).join('') + '</div>';
-    }).join('') + '</div>';
-    host.onclick = function (e) {
-      var btn = e.target.closest('button');
-      if (!btn || !focused) return;
-      var key = btn.dataset.k;
-      if (key === 'caps') { caps = !caps; renderKeyboard(kind); return; }
-      if (key === 'back') focused.value = focused.value.slice(0, -1);
-      else if (key === 'clear') focused.value = '';
-      else if (key === 'space') focused.value += ' ';
-      else focused.value += (caps && key.length === 1 && /[a-z]/.test(key) ? key.toUpperCase() : key);
-      if (focused.name === 'designer_phone') focused.value = focused.value.replace(/\D/g, '').slice(0, 8);
-      focused.dispatchEvent(new Event('input', { bubbles: true }));
-      armIdle();
-    };
   }
 
   function showReady(view) {
@@ -377,19 +282,20 @@
   function openResult(view, already) {
     mode = 'result';
     clearTimers();
-    $('resKicker').textContent = already ? 'Already used' : 'Congratulations' + (view.firstName ? ', ' + view.firstName : '');
+    $('resKicker').textContent = already
+      ? 'Already used'
+      : (view.firstName ? 'Congratulations, ' + view.firstName + '!' : 'Congratulations!');
     var label = view.result.label || '';
     $('resTitle').textContent = already
       ? 'This code won ' + (label.charAt(0) === '$' ? 'a ' : 'the ') + label
       : 'You won ' + (label.charAt(0) === '$' ? 'a ' : 'the ') + label + '!';
     $('resBrand').textContent = view.result.brand || '';
-    var mailed = view.emailStatus === 'sent' ? 'We emailed the homeowner and the designer. ' : '';
     $('resBody').textContent = already
       ? 'No second spin. The prize is already saved against this code.'
-      : 'Saved. ' + mailed + 'The prize goes to the designer within 2 weeks.';
+      : 'Your prize is confirmed and recorded, and we’ve emailed you and your interior designer the details. Please check your email for instructions on how to claim it.';
     modal.classList.add('show');
     if (!already) { fanfare(); confetti(); }
-    startCountdown(boot.kioskResetSeconds || 25, 'Next homeowner in', $('count'));
+    startCountdown(boot.kioskResetSeconds || 120, 'Closing in', $('count'), true);
   }
 
   function doSpin() {
@@ -418,6 +324,54 @@
     });
   }
 
+  function applyKioskQr(data) {
+    var host = $('kioskQr');
+    var img = $('kioskQrImg');
+    var caption = $('kioskQrCaption');
+    var scroll = $('kioskScroll');
+    if (!host || !data || !data.event) return;
+    if (!screenEvent) {
+      screenEvent = data.event.slug;
+      var next = new URL(location.href);
+      next.searchParams.set('event', screenEvent);
+      history.replaceState(null, '', next.pathname + next.search);
+    }
+    var qr = data.qr || {};
+    qrPosition = qr.position || 'top-center';
+    host.dataset.position = qrPosition;
+    host.style.setProperty('--qr-size', qr.unit === 'px' ? (qr.size + 'px') : ((qr.size || 34) + 'vw'));
+    var src = '/api/kiosk/qr.png?event=' + encodeURIComponent(data.event.slug);
+    if (img.getAttribute('src') !== src) img.src = src;
+    img.alt = 'QR code to register for ' + (data.event.name || 'this event');
+    if (caption) caption.textContent = 'Scan to register for your spin';
+    if (scroll) {
+      var atBottom = qrPosition.indexOf('bottom') === 0;
+      if (atBottom && host !== scroll.lastElementChild) scroll.appendChild(host);
+      if (!atBottom && host !== scroll.firstElementChild) scroll.insertBefore(host, scroll.firstElementChild);
+    }
+  }
+
+  function loadKioskQr() {
+    var query = screenEvent ? ('?event=' + encodeURIComponent(screenEvent)) : '';
+    return fetch('/api/kiosk/display' + query, { cache: 'no-store' }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.error || 'Registration QR is not ready.');
+        applyKioskQr(data);
+      });
+    }).catch(function (error) {
+      var caption = $('kioskQrCaption');
+      if (caption) caption.textContent = error.message || 'Registration QR is not ready.';
+    });
+  }
+
+  function scrollToQr() {
+    var scroll = $('kioskScroll');
+    var host = $('kioskQr');
+    if (!scroll) return;
+    if (qrPosition.indexOf('bottom') === 0 && host) host.scrollIntoView({ block: 'end' });
+    else scroll.scrollTop = 0;
+  }
+
   function resetAll() {
     spinning = false;
     clearTimers();
@@ -426,7 +380,10 @@
     SureWinWheel.reset(wheel);
     code = '';
     entry = null;
-    refreshSold().then(renderCode).catch(function () {});
+    refreshSold().then(function () {
+      renderCode();
+      scrollToQr();
+    }).catch(function () {});
   }
 
   function refreshSold() {
@@ -473,6 +430,7 @@
     if (document.visibilityState === 'visible') wake();
   });
   setInterval(function () { fetch('/api/health', { cache: 'no-store' }).catch(function () {}); }, 45000);
+  setInterval(loadKioskQr, 20000);
 
   Promise.all([
     fetch('/api/bootstrap').then(function (res) { return res.json(); }),
@@ -481,6 +439,9 @@
     boot = parts[0];
     if (boot.whatsapp) $('waLink').href = 'https://wa.me/' + boot.whatsapp;
     wake();
-    return refreshSold();
-  }).then(renderCode).catch(function () {});
+    return loadKioskQr();
+  }).then(refreshSold).then(function () {
+    renderCode();
+    scrollToQr();
+  }).catch(function () {});
 })();

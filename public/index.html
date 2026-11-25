@@ -24,7 +24,8 @@
     <p>Every homeowner who signs with an interior designer at our event gets one sure-win spin on the big screen. Top prize: iPhone Duo or iPhone 18 Pro Max.</p>
     <div class="steps">
       <span class="step on" id="st1"><i>1</i>Your details</span>
-      <span class="step" id="st2"><i>2</i>Your code</span>
+      <span class="step" id="st2"><i>2</i>Designer</span>
+      <span class="step" id="st3"><i>3</i>Your code</span>
     </div>
     <div class="notice">
       <img class="notice-otter" src="/img/otter-2.webp" alt="" aria-hidden="true">
@@ -40,13 +41,13 @@
   </section>
   <main class="grid">
     <div class="card" id="formCard">
-      <h2>Step 1 · Prize redemption details</h2>
-      <p class="sub">Filled in by the homeowner. You’ll get a code for the big screen. One spin per homeowner.</p>
+      <h2 id="stepTitle">Step 1 · Homeowner details</h2>
+      <p class="sub" id="stepSub">You’ll get a code for the big screen. One spin per homeowner.</p>
       <form class="f" id="form" novalidate>
+        <div id="step1" data-testid="step-homeowner">
         <div id="eventSlot"></div>
         <input type="hidden" name="event_slug" id="eventSlug">
-        <label class="fl"><span>Date you attended</span><input name="event_date" id="eventDate" type="date" required></label>
-        <div class="ed" id="ed" aria-live="polite"></div>
+        <div id="dateSlot"></div>
         <label class="fl"><span>Homeowner name</span><input name="homeowner_name" autocomplete="name" required></label>
         <label class="fl"><span>Homeowner mobile</span><div class="ph"><b>+65</b><input name="homeowner_phone" id="homePhone" type="tel" inputmode="numeric" maxlength="8" autocomplete="tel" required></div></label>
         <label class="fl"><span>Homeowner email <em class="hint">we send the spin code here</em></span><input name="homeowner_email" type="email" inputmode="email" autocomplete="email" required></label>
@@ -62,9 +63,9 @@
         </div>
         <div class="decl">
           <div class="qn">Declarations</div>
-          <label class="consent"><input type="checkbox" name="decl_contract" value="yes" required><span>I confirm that I have <b>signed a contract with the interior design firm I met at this event</b>, and the deal is concluded and not cancelled.</span></label>
-          <label class="consent"><input type="checkbox" name="decl_genuine" value="yes" required><span>All details and documents here are <b>true, complete and unaltered</b>. I visited the event and met the firm there.</span></label>
-          <label class="consent"><input type="checkbox" name="decl_verify" value="yes" required><span>I agree that IDLah may <b>contact me and the interior design firm to verify</b> this entry, and that false entries may be voided and prizes recovered.</span></label>
+          <label class="consent"><input type="checkbox" name="decl_contract" value="yes" required><span>The homeowner has <b>signed a contract with the interior design firm met at this event</b>, and the deal is concluded and not cancelled.</span></label>
+          <label class="consent"><input type="checkbox" name="decl_genuine" value="yes" required><span>All details and documents here are <b>true, complete and unaltered</b>. The homeowner visited the event and met the firm there.</span></label>
+          <label class="consent"><input type="checkbox" name="decl_verify" value="yes" required><span>IDLah may <b>contact the homeowner and the interior design firm to verify</b> this entry, and false entries may be voided and prizes recovered.</span></label>
         </div>
         <details class="tnc"><summary>Lucky Spin prize redemption: terms &amp; conditions</summary>
           <p><b>Eligibility.</b> Lucky Spin prizes are awarded to homeowners who participated in the event and won through the Lucky Spin activity. Prizes are linked to the successful closing of a deal between the homeowner and the participating interior design company.</p>
@@ -83,8 +84,20 @@
         </details>
         <label class="consent"><input type="checkbox" name="tnc" value="yes" required><span>I have read and agree to the terms &amp; conditions above.</span></label>
         <div class="err" id="err" role="alert"></div>
-        <button class="go" id="go" type="submit">Get my spin code →</button>
+        <button class="go" id="nextStep" type="button" data-testid="next-step">Next →</button>
         <div class="micro"><span><b>✓</b> Every spin wins</span><span><b>✓</b> 1 spin per homeowner</span><span><b>✓</b> Delivered in 2 weeks</span></div>
+        </div>
+        <div id="step2" data-testid="step-designer" hidden>
+          <label class="fl"><span>Designer name</span><input name="designer_name" id="designerName" autocomplete="name" required></label>
+          <label class="fl"><span>Designer mobile</span><div class="ph"><b>+65</b><input name="designer_phone" id="designerPhone" type="tel" inputmode="numeric" maxlength="8" autocomplete="tel" required></div></label>
+          <label class="fl"><span>Designer email</span><input name="designer_email" id="designerEmail" type="email" inputmode="email" autocomplete="email" required></label>
+          <label class="fl"><span>Interior design company</span><input name="id_company" id="idCompany" autocomplete="organization" required></label>
+          <div class="err" id="err2" role="alert"></div>
+          <div class="row-btns">
+            <button class="btn-ghost" id="backStep" type="button">Back</button>
+            <button class="go" id="go" type="submit" data-testid="submit-entry">Submit &amp; get my spin code</button>
+          </div>
+        </div>
       </form>
     </div>
     <div class="stage" id="stage">

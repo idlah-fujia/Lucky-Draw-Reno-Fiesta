@@ -9,5 +9,6 @@ data/entries.json
 data/uploads/
 data/outbox.json
 data/file-secret.txt
+data/kiosk-qr.json
 *.log
 .DS_Store

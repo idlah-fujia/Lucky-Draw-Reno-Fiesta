@@ -1,6 +1,6 @@
 {
   "whatsapp": "6588949268",
-  "kioskResetSeconds": 25,
+  "kioskResetSeconds": 120,
   "invalidResetSeconds": 12,
   "idleResetSeconds": 90,
   "events": [

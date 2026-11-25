@@ -40,6 +40,38 @@
       </div>
     </div>
     <div class="banner" id="storeBanner"></div>
+    <section class="card" id="ledQrCard" data-testid="led-qr-panel">
+      <h2>LED screen QR</h2>
+      <p class="sub">Size and place of the registration QR on the big screen. The screen checks for a new setting about every 20 seconds, and again when it resets. Saving here overrides <code>KIOSK_QR_SIZE</code> and <code>KIOSK_QR_POSITION</code> until the store is wiped.</p>
+      <div class="led-grid">
+        <div class="f">
+          <label class="fl"><span>Event</span><select id="ledEvent" data-testid="led-event"></select></label>
+          <label class="fl"><span>Size unit</span>
+            <select id="ledUnit">
+              <option value="percent">Percent of screen width</option>
+              <option value="px">Pixels</option>
+            </select>
+          </label>
+          <label class="fl"><span>Size <b id="ledSizeLabel">34%</b></span>
+            <input class="led-size" id="ledSize" data-testid="led-size" type="range" min="16" max="70" value="34">
+          </label>
+          <div>
+            <div class="qn">Position</div>
+            <div class="pos-grid" id="ledPos" data-testid="led-position"></div>
+          </div>
+          <div class="err" id="ledErr" role="alert"></div>
+          <button class="go" id="ledSave" data-testid="led-save" type="button">Save</button>
+          <p class="sub" id="ledMeta"></p>
+        </div>
+        <div class="led-preview" aria-label="Live preview">
+          <div class="led-screen center" id="ledScreen">
+            <img id="ledPreviewImg" alt="Preview of the registration QR">
+            <p>Scan to register for your spin</p>
+            <div class="led-fake">Keypad and wheel stay on the screen with the QR</div>
+          </div>
+        </div>
+      </div>
+    </section>
     <div class="stats" id="stats"></div>
     <div class="tools">
       <input id="q" type="search" placeholder="Search name, mobile or code" aria-label="Search entries">
@@ -58,7 +90,7 @@
       <table class="gridish" id="table">
         <thead>
           <tr>
-            <th>When (SGT)</th><th>Event</th><th>Homeowner</th><th>Code</th><th>Status</th><th>Prize</th><th>Proof</th><th></th>
+            <th>When (SGT)</th><th>Event</th><th>Homeowner</th><th>Designer</th><th>Code</th><th>Status</th><th>Prize</th><th>Proof</th><th></th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>

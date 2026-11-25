@@ -16,6 +16,7 @@ import { MAX_PROOF_BYTES, cleanText, emailAddress, eventDate, homeownerPhone, de
 import { codeEmail, resultEmails } from './email.js'
 import { adminCookie, adminCookieHeader, passwordsMatch, readAdmin } from './auth.js'
 import { toCsv } from './schema.js'
+import { GLOBAL_EVENT, QR_LIMITS, clampSize, envKioskQr, normalizeSaved, parsePosition, resolveKioskQr } from './kioskQr.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
@@ -55,12 +56,29 @@ export function createApp(deps) {
     return c.json({
       today: todaySGT(),
       whatsapp: config.whatsapp,
-      kioskResetSeconds: config.kioskResetSeconds || 25,
+      kioskResetSeconds: config.kioskResetSeconds || 120,
       invalidResetSeconds: config.invalidResetSeconds || 12,
       idleResetSeconds: config.idleResetSeconds || 90,
       events: config.events.filter((event) => event.active).map(publicEvent),
       slots: config.slots
     })
+  })
+
+  app.get('/api/kiosk/display', async (c) => {
+    const config = configOf()
+    const event = eventForScreen(config, c.req.query('event'))
+    const qr = resolveKioskQr(await store.readKioskQr(), event.slug)
+    return c.json({
+      event: publicEvent(event),
+      formUrl: formUrlFor(c, event.slug),
+      qr
+    })
+  })
+
+  app.get('/api/kiosk/qr.png', async (c) => {
+    const config = configOf()
+    const event = eventForScreen(config, c.req.query('event'))
+    return qrPng(c, formUrlFor(c, event.slug), `register-${event.slug}.png`)
   })
 
   app.get('/api/events/:slug', async (c) => {
@@ -86,6 +104,13 @@ export function createApp(deps) {
     const now = new Date()
     const nowIso = now.toISOString()
     const phone = homeownerPhone(body.homeowner_phone)
+    const designerName = cleanText(body.designer_name, { min: 2, max: 80, label: 'the designer’s name' })
+    const designerPhoneValue = designerPhone(body.designer_phone)
+    const designerEmail = emailAddress(body.designer_email, 'the designer’s email')
+    const company = cleanText(body.id_company, { min: 2, max: 120, label: 'the interior design company' })
+    if (designerPhoneValue === phone) {
+      throw new HttpError(400, 'The designer’s number must be different from the homeowner’s number.')
+    }
     const file = body.proof
     if (!file || typeof file === 'string' || typeof file.arrayBuffer !== 'function') {
       throw new HttpError(400, 'Upload the down payment receipt or signed contract.')
@@ -124,10 +149,10 @@ export function createApp(deps) {
           homeowner_phone: phone,
           homeowner_email: emailAddress(body.homeowner_email, 'the homeowner’s email'),
           delivery_address: cleanText(body.delivery_address, { min: 8, max: 300, label: 'the prize delivery address' }),
-          designer_name: '',
-          designer_phone: '',
-          designer_email: '',
-          id_company: '',
+          designer_name: designerName,
+          designer_phone: designerPhoneValue,
+          designer_email: designerEmail,
+          id_company: company,
           proof_key: id,
           proof_link: `${base}${proofPath(id, fileSecret)}`,
           proof_filename: filename,
@@ -144,7 +169,7 @@ export function createApp(deps) {
           code_email_status: '',
           result_email_status: '',
           created_at: nowIso,
-          designer_saved_at: '',
+          designer_saved_at: nowIso,
           spun_at: '',
           verified_at: '',
           voided_at: '',
@@ -228,6 +253,9 @@ export function createApp(deps) {
           throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
         }
         if (existing.prize_id) return { entry: existing, already: true }
+        if (view.state === 'needs_designer') {
+          throw new HttpError(400, 'This code has no interior designer on it, so it can’t spin. Please see the IDLah booth.')
+        }
         throw new HttpError(409, 'This code can’t be used.')
       }
       const sold = view.soldOut
@@ -358,25 +386,53 @@ export function createApp(deps) {
     return c.json({ entry: (await freshLinks([entry], c, fileSecret))[0] })
   })
 
+  app.get('/api/admin/kiosk-qr', async (c) => {
+    const config = configOf()
+    const requested = String(c.req.query('event') || '').trim()
+    const event = requested ? findEvent(config, requested) : null
+    if (requested && !event) throw new HttpError(404, 'Unknown event.')
+    const map = await store.readKioskQr()
+    const slug = event ? event.slug : (config.events.find((item) => item.active)?.slug || config.events[0]?.slug || '')
+    const key = event ? event.slug : GLOBAL_EVENT
+    return c.json({
+      event: event ? publicEvent(event) : null,
+      saved: normalizeSaved(map[key]),
+      resolved: resolveKioskQr(map, slug),
+      env: envKioskQr(),
+      limits: QR_LIMITS,
+      events: config.events.map(publicEvent)
+    })
+  })
+
+  app.put('/api/admin/kiosk-qr', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const config = configOf()
+    const requested = String(body.event || '').trim()
+    let key = GLOBAL_EVENT
+    if (requested) {
+      const event = findEvent(config, requested)
+      if (!event) throw new HttpError(400, 'Unknown event.')
+      key = event.slug
+    }
+    const sized = clampSize(body.size, body.unit === 'px' ? 'px' : body.unit === 'percent' ? 'percent' : null)
+    const position = parsePosition(body.position)
+    if (!sized) throw new HttpError(400, `Size must be ${QR_LIMITS.percent[0]}–${QR_LIMITS.percent[1]}% of the screen width, or ${QR_LIMITS.px[0]}–${QR_LIMITS.px[1]} px.`)
+    if (!position) throw new HttpError(400, 'Choose a position on the screen.')
+    const saved = { ...sized, position, updatedAt: new Date().toISOString() }
+    await store.updateKioskQr(key, saved)
+    return c.json({ ok: true, event: requested || null, saved })
+  })
+
   app.get('/api/admin/qr/:slug', async (c) => {
     const config = configOf()
     const event = findEvent(config, c.req.param('slug'))
     if (!event) throw new HttpError(404, 'Unknown event.')
-    const url = `${requestBaseUrl(c)}/e/${event.slug}`
-    const png = await QRCode.toBuffer(url, {
-      width: 720,
-      margin: 2,
-      errorCorrectionLevel: 'H',
-      color: { dark: '#1B0F33', light: '#FFFFFF' }
-    })
-    c.header('Content-Type', 'image/png')
-    c.header('Content-Disposition', `inline; filename="spin-${event.slug}.png"`)
-    c.header('Cache-Control', 'private, no-store')
-    return c.body(png)
+    return qrPng(c, formUrlFor(c, event.slug), `spin-${event.slug}.png`, { dark: '#1B0F33', light: '#FFFFFF' })
   })
 
   const htmlHeaders = { 'Cache-Control': 'no-cache' }
   app.get('/', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
+  app.get('/register', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
   app.get('/e/:slug', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
   app.get('/spin', (c) => c.html(readPage('spin.html'), 200, htmlHeaders))
   app.get('/admin', (c) => c.html(readPage('admin.html'), 200, htmlHeaders))
@@ -398,6 +454,35 @@ export function createApp(deps) {
   })
 
   return app
+}
+
+function eventForScreen(config, slug) {
+  const requested = String(slug || '').trim()
+  if (requested) {
+    const event = findEvent(config, requested)
+    if (!event) throw new HttpError(404, 'That event link is not recognised.')
+    return event
+  }
+  const event = config.events.find((item) => item.active) || config.events[0]
+  if (!event) throw new HttpError(404, 'No event is configured.')
+  return event
+}
+
+function formUrlFor(c, slug) {
+  return `${requestBaseUrl(c)}/e/${encodeURIComponent(slug)}`
+}
+
+async function qrPng(c, url, filename, color = { dark: '#000000', light: '#FFFFFF' }) {
+  const png = await QRCode.toBuffer(url, {
+    width: 960,
+    margin: 4,
+    errorCorrectionLevel: 'H',
+    color
+  })
+  c.header('Content-Type', 'image/png')
+  c.header('Content-Disposition', `inline; filename="${filename}"`)
+  c.header('Cache-Control', 'private, no-store')
+  return c.body(png)
 }
 
 function remoteIp(c) {

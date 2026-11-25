@@ -1,5 +1,9 @@
 (function () {
-  var state = { entries: [], events: [], session: null };
+  var state = { entries: [], events: [], session: null, led: null, ledPosition: 'top-center' };
+  var POS_LABELS = [
+    ['top-left', 'Top left'], ['top-center', 'Top centre'], ['top-right', 'Top right'],
+    ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom centre'], ['bottom-right', 'Bottom right']
+  ];
   var loginView = document.getElementById('loginView');
   var appView = document.getElementById('appView');
 
@@ -60,6 +64,43 @@
     document.getElementById(id).addEventListener('input', renderTable);
   });
   document.getElementById('oddsEvent').addEventListener('change', loadOdds);
+  document.getElementById('ledEvent').addEventListener('change', loadLed);
+  document.getElementById('ledUnit').addEventListener('change', function () {
+    applySizeBounds(this.value, null);
+    paintLed();
+  });
+  document.getElementById('ledSize').addEventListener('input', paintLed);
+  document.getElementById('ledPos').innerHTML = POS_LABELS.map(function (item) {
+    return '<button type="button" data-pos="' + item[0] + '">' + item[1] + '</button>';
+  }).join('');
+  document.getElementById('ledPos').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    state.ledPosition = btn.dataset.pos;
+    paintLed();
+  });
+  document.getElementById('ledSave').addEventListener('click', function () {
+    var button = this;
+    var err = document.getElementById('ledErr');
+    err.textContent = '';
+    button.disabled = true;
+    api('/api/admin/kiosk-qr', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        event: document.getElementById('ledEvent').value,
+        size: Number(document.getElementById('ledSize').value),
+        unit: document.getElementById('ledUnit').value,
+        position: state.ledPosition
+      })
+    }).then(function () {
+      return loadLed();
+    }).then(function () {
+      document.getElementById('ledMeta').textContent = 'Saved. The LED screen picks this up within about 20 seconds, or on the next reset.';
+    }).catch(function (error) {
+      err.textContent = error.message;
+    }).finally(function () { button.disabled = false; });
+  });
 
   function banner() {
     var el = document.getElementById('storeBanner');
@@ -87,7 +128,63 @@
       renderTable();
       renderQrs();
       renderOutbox(parts[1]);
-      return loadOdds();
+      return Promise.all([loadOdds(), loadLed()]);
+    });
+  }
+
+  function applySizeBounds(unit, value) {
+    var limits = (state.led && state.led.limits) || { percent: [16, 70], px: [160, 900] };
+    var range = unit === 'px' ? limits.px : limits.percent;
+    var slider = document.getElementById('ledSize');
+    slider.min = String(range[0]);
+    slider.max = String(range[1]);
+    slider.step = unit === 'px' ? '10' : '1';
+    var next = value == null ? Number(slider.value) : Number(value);
+    if (!Number.isFinite(next)) next = range[0];
+    if (next < range[0]) next = range[0];
+    if (next > range[1]) next = range[1];
+    slider.value = String(next);
+  }
+
+  function paintLed() {
+    var unit = document.getElementById('ledUnit').value;
+    var size = document.getElementById('ledSize').value;
+    document.getElementById('ledSizeLabel').textContent = unit === 'px' ? size + ' px' : size + '%';
+    document.querySelectorAll('#ledPos button').forEach(function (btn) {
+      btn.classList.toggle('on', btn.dataset.pos === state.ledPosition);
+    });
+    var screen = document.getElementById('ledScreen');
+    var side = state.ledPosition.indexOf('left') >= 0 ? 'left' : state.ledPosition.indexOf('right') >= 0 ? 'right' : 'center';
+    screen.className = 'led-screen ' + side + (state.ledPosition.indexOf('bottom') === 0 ? ' bottom' : '');
+    var preview = unit === 'px' ? Math.max(18, Math.min(78, (Number(size) / 900) * 78)) + '%' : Math.max(18, Math.min(78, Number(size))) + '%';
+    screen.style.setProperty('--preview-size', preview);
+    var event = document.getElementById('ledEvent').value || (state.events[0] && state.events[0].slug) || '';
+    var img = document.getElementById('ledPreviewImg');
+    if (event) {
+      var src = '/api/kiosk/qr.png?event=' + encodeURIComponent(event);
+      if (img.getAttribute('src') !== src) img.src = src;
+    }
+  }
+
+  function loadLed() {
+    var event = document.getElementById('ledEvent').value;
+    return api('/api/admin/kiosk-qr' + (event ? '?event=' + encodeURIComponent(event) : '')).then(function (data) {
+      state.led = data;
+      var select = document.getElementById('ledEvent');
+      var keep = event || (data.event && data.event.slug) || '';
+      select.innerHTML = '<option value="">All events (default)</option>' + data.events.map(function (item) {
+        return '<option value="' + esc(item.slug) + '">' + esc(item.name + (item.edition ? ' · ' + item.edition : '')) + '</option>';
+      }).join('');
+      select.value = keep;
+      var shown = data.saved || data.resolved;
+      document.getElementById('ledUnit').value = shown.unit === 'px' ? 'px' : 'percent';
+      applySizeBounds(shown.unit === 'px' ? 'px' : 'percent', shown.size);
+      state.ledPosition = shown.position || 'top-center';
+      paintLed();
+      var where = data.saved
+        ? 'Saved for ' + (data.event ? data.event.name : 'every event') + '.'
+        : 'Nothing saved for this choice yet. The screen is using the ' + data.resolved.source + ' setting.';
+      document.getElementById('ledMeta').textContent = where + ' Env default is ' + data.env.size + (data.env.unit === 'px' ? 'px' : '%') + ', ' + data.env.position + '.';
     });
   }
 
@@ -146,13 +243,14 @@
         '<td>' + esc(when(row.created_at)) + '</td>' +
         '<td>' + esc(row.event_name) + '</td>' +
         '<td><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
+        '<td data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
         '<td><b data-testid="row-code">' + esc(row.code) + '</b></td>' +
         '<td><span class="pill ' + esc(row.status) + '">' + esc(row.status) + '</span></td>' +
         '<td>' + esc(row.prize_label || '—') + '</td>' +
         '<td>' + (row.proof_link ? '<a href="' + esc(row.proof_link) + '" target="_blank" rel="noopener">Open file</a>' : '—') + '</td>' +
         '<td>' + actions + ' <button class="mini" data-act="toggle" data-id="' + row.id + '">Details</button></td>' +
         '</tr>' +
-        '<tr class="detail" id="detail-' + row.id + '" hidden><td colspan="8">' + detail(row) + '</td></tr>';
+        '<tr class="detail" id="detail-' + row.id + '" hidden><td colspan="9">' + detail(row) + '</td></tr>';
     }).join('');
   }
 

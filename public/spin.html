@@ -13,6 +13,13 @@
 <link rel="stylesheet" href="/css/site.css">
 </head>
 <body class="kiosk">
+<div class="kiosk-scroll" id="kioskScroll">
+<section class="kiosk-qr" id="kioskQr" data-position="top-center" data-testid="kiosk-qr">
+  <div class="kiosk-qr-card">
+    <img id="kioskQrImg" alt="QR code. Scan to register for your spin" width="960" height="960">
+    <p id="kioskQrCaption">Scan to register for your spin</p>
+  </div>
+</section>
 <div class="kiosk-shell">
   <header class="kiosk-top">
     <span class="logo"><img src="/img/rf-logo.png" alt="Reno Fiesta"></span>
@@ -41,6 +48,7 @@
     </section>
   </div>
 </div>
+</div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
   <div class="res">
     <img class="res-otter" src="/img/otter-6.webp" alt="" aria-hidden="true">
@@ -50,7 +58,7 @@
     <p id="resBody"></p>
     <div class="count" id="count"></div>
     <div class="row-btns">
-      <button class="go" id="nextBtn" type="button">Next homeowner</button>
+      <button class="go" id="nextBtn" type="button">Close</button>
     </div>
   </div>
 </div>

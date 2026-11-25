@@ -10,6 +10,8 @@ export class LocalStore {
     this.mode = 'local'
     this.cache = []
     this.chain = Promise.resolve()
+    this.kioskChain = Promise.resolve()
+    this.kioskFile = path.join(dir, 'kiosk-qr.json')
     this.loaded = false
   }
 
@@ -56,5 +58,34 @@ export class LocalStore {
     await fs.promises.writeFile(tmp, json)
     await fs.promises.rename(tmp, this.file)
     await fs.promises.writeFile(this.csvFile, toCsv(list.map((row) => cloneEntry(row))))
+  }
+
+  async readKioskQr() {
+    try {
+      const raw = await fs.promises.readFile(this.kioskFile, 'utf8')
+      const parsed = raw.trim() ? JSON.parse(raw) : {}
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch (error) {
+      if (error.code === 'ENOENT') return {}
+      throw error
+    }
+  }
+
+  async writeKioskQr(map) {
+    await fs.promises.mkdir(this.dir, { recursive: true })
+    const tmp = `${this.kioskFile}.tmp`
+    await fs.promises.writeFile(tmp, JSON.stringify(map, null, 2))
+    await fs.promises.rename(tmp, this.kioskFile)
+  }
+
+  async updateKioskQr(eventKey, value) {
+    const run = this.kioskChain.then(async () => {
+      const map = await this.readKioskQr()
+      map[eventKey] = value
+      await this.writeKioskQr(map)
+      return map
+    })
+    this.kioskChain = run.then(() => {}, () => {})
+    return run
   }
 }

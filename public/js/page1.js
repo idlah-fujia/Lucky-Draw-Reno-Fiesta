@@ -2,7 +2,6 @@
   var form = document.getElementById('form');
   var err = document.getElementById('err');
   var boot = null;
-  var locked = null;
 
   function esc(s) {
     return String(s || '').replace(/[&<>"']/g, function (c) {
@@ -14,48 +13,81 @@
     if (path) return decodeURIComponent(path[1]);
     return new URLSearchParams(location.search).get('event');
   }
-  function setErr(message) {
-    err.textContent = message || '';
+  function setErr(message, which) {
+    var primary = document.getElementById('err');
+    var second = document.getElementById('err2');
+    var target = which === 2 ? second : primary;
+    if (primary) primary.textContent = target === primary ? (message || '') : '';
+    if (second) second.textContent = target === second ? (message || '') : '';
+    if (!target && err) err.textContent = message || '';
   }
   function eventLabel(event) {
     return event.edition ? event.name + ' · ' + event.edition : event.name;
   }
 
-  function renderEvent(events) {
+  function renderEvent(events, selected) {
     var slot = document.getElementById('eventSlot');
     var hidden = document.getElementById('eventSlug');
-    if (locked) {
-      hidden.value = locked.slug;
-      slot.innerHTML = '<div class="event-lock"><small>Event attended</small><b>' + esc(eventLabel(locked)) + '</b></div>';
-      applyWindow(locked);
-      return;
-    }
-    var options = events.map(function (event) {
+    var options = '<option value="">Choose an event</option>' + events.map(function (event) {
       return '<option value="' + esc(event.slug) + '">' + esc(eventLabel(event)) + '</option>';
     }).join('');
-    slot.innerHTML = '<label class="fl"><span>Event attended</span><select id="eventPick">' + options + '</select></label>';
+    slot.innerHTML = '<label class="fl"><span>Event</span><select id="eventPick" data-testid="event-pick" required>' + options + '</select></label>';
     var pick = document.getElementById('eventPick');
-    hidden.value = pick.value;
-    applyWindow(events.find(function (event) { return event.slug === pick.value; }));
+    var chosen = selected && events.some(function (event) { return event.slug === selected; }) ? selected : '';
+    pick.value = chosen;
+    hidden.value = chosen;
+    renderDate(events.find(function (event) { return event.slug === chosen; }) || null);
     pick.addEventListener('change', function () {
       hidden.value = pick.value;
       var event = events.find(function (item) { return item.slug === pick.value; });
-      applyWindow(event);
+      renderDate(event || null);
       refreshSold(pick.value);
     });
   }
 
-  function applyWindow(event) {
-    var input = document.getElementById('eventDate');
-    var note = document.getElementById('ed');
-    if (!event) { note.textContent = ''; return; }
-    if (boot && boot.today) input.max = boot.today;
-    if (event.starts) input.min = event.starts;
-    if (event.ends && (!boot || event.ends < boot.today)) input.max = event.ends;
-    if (!input.value && boot && boot.today >= (event.starts || '') && boot.today <= (event.ends || '9999')) {
-      input.value = boot.today;
+  function addDay(iso) {
+    var parts = iso.split('-').map(Number);
+    var date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    date.setUTCDate(date.getUTCDate() + 1);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function eventDays(event) {
+    if (!event || !/^\d{4}-\d{2}-\d{2}$/.test(event.starts || '') || !/^\d{4}-\d{2}-\d{2}$/.test(event.ends || '')) return [];
+    if (event.starts > event.ends) return [];
+    var days = [];
+    var cursor = event.starts;
+    while (cursor <= event.ends && days.length < 400) {
+      days.push(cursor);
+      cursor = addDay(cursor);
     }
-    note.textContent = event.starts ? 'Event dates: ' + event.starts + ' to ' + event.ends : '';
+    return days;
+  }
+
+  function renderDate(event) {
+    var slot = document.getElementById('dateSlot');
+    if (!event) {
+      slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" data-testid="event-date" disabled><option value="">Choose an event first</option></select></label><div class="ed" id="ed" aria-live="polite"></div>';
+      return;
+    }
+    var days = eventDays(event);
+    var range = event.starts && event.ends ? (event.starts === event.ends ? event.starts : event.starts + ' to ' + event.ends) : '';
+    if (days.length === 1) {
+      slot.innerHTML = '<label class="fl"><span>Event date</span><input name="event_date" id="eventDate" data-testid="event-date" value="' + esc(days[0]) + '" readonly required></label>' +
+        '<div class="ed" id="ed" aria-live="polite">Filled from the event' + (range ? ' · ' + esc(range) : '') + '</div>';
+      return;
+    }
+    if (days.length > 1) {
+      var today = boot && boot.today;
+      var preferred = today && days.indexOf(today) >= 0 ? today : '';
+      slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" data-testid="event-date" required>' +
+        '<option value="">Choose a day</option>' +
+        days.map(function (day) { return '<option value="' + day + '">' + day + '</option>'; }).join('') +
+        '</select></label><div class="ed" id="ed" aria-live="polite">This event runs ' + esc(range) + '. Choose the day.</div>';
+      if (preferred) document.getElementById('eventDate').value = preferred;
+      return;
+    }
+    slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" disabled><option value="">No dates on this event</option></select></label><div class="ed" id="ed">This event has no dates in the config.</div>';
   }
 
   function refreshSold(slug) {
@@ -66,6 +98,9 @@
   }
 
   document.getElementById('homePhone').addEventListener('input', function () {
+    this.value = this.value.replace(/\D/g, '').slice(0, 8);
+  });
+  document.getElementById('designerPhone').addEventListener('input', function () {
     this.value = this.value.replace(/\D/g, '').slice(0, 8);
   });
   document.getElementById('proof').addEventListener('change', function () {
@@ -81,22 +116,75 @@
     label.innerHTML = '<b>' + esc(file.name) + '</b><small>' + (file.size / 1048576).toFixed(1) + ' MB · tap to change</small>';
   });
 
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
+  function markStep(n) {
+    [1, 2, 3].forEach(function (i) {
+      var el = document.getElementById('st' + i);
+      if (!el) return;
+      el.className = i < n ? 'step done' : i === n ? 'step on' : 'step';
+      el.querySelector('i').textContent = i < n ? '✓' : String(i);
+    });
+  }
+
+  function showStep(n) {
+    document.getElementById('step1').hidden = n !== 1;
+    document.getElementById('step2').hidden = n !== 2;
+    document.getElementById('stepTitle').textContent = n === 2 ? 'Step 2 · Designer details' : 'Step 1 · Homeowner details';
+    document.getElementById('stepSub').textContent = n === 2
+      ? 'These are saved with the entry. The big screen will not ask for them again.'
+      : 'You’ll get a code for the big screen. One spin per homeowner.';
+    markStep(n);
     setErr('');
+    document.getElementById('formCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function validateHomeowner() {
     var data = new FormData(form);
     var phone = String(data.get('homeowner_phone') || '');
     var file = document.getElementById('proof').files[0];
-    if (!data.get('event_slug')) return setErr('Choose the event you attended.');
-    if (!data.get('event_date')) return setErr('Enter the date you attended.');
-    if (String(data.get('homeowner_name') || '').trim().length < 2) return setErr('Enter the homeowner’s name.');
-    if (!/^[89]\d{7}$/.test(phone)) return setErr('Enter a valid homeowner mobile (8 digits, starting with 8 or 9).');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(data.get('homeowner_email') || '').trim())) return setErr('Enter the homeowner’s email.');
-    if (String(data.get('delivery_address') || '').trim().length < 8) return setErr('Enter the prize delivery address.');
-    if (!file) return setErr('Upload the down payment receipt or signed contract.');
-    if (file.size > 10 * 1048576) return setErr('Proof file must be under 10 MB.');
-    if (!form.decl_contract.checked || !form.decl_genuine.checked || !form.decl_verify.checked) return setErr('Please tick all three declarations.');
-    if (!form.tnc.checked) return setErr('Please agree to the terms and conditions.');
+    if (!data.get('event_slug')) return 'Choose an event.';
+    if (!data.get('event_date')) return 'Choose the event date.';
+    if (String(data.get('homeowner_name') || '').trim().length < 2) return 'Enter the homeowner’s name.';
+    if (!/^[89]\d{7}$/.test(phone)) return 'Enter a valid homeowner mobile (8 digits, starting with 8 or 9).';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(data.get('homeowner_email') || '').trim())) return 'Enter the homeowner’s email.';
+    if (String(data.get('delivery_address') || '').trim().length < 8) return 'Enter the prize delivery address.';
+    if (!file) return 'Upload the down payment receipt or signed contract.';
+    if (file.size > 10 * 1048576) return 'Proof file must be under 10 MB.';
+    if (!form.decl_contract.checked || !form.decl_genuine.checked || !form.decl_verify.checked) return 'Please tick all three declarations.';
+    if (!form.tnc.checked) return 'Please agree to the terms and conditions.';
+    return '';
+  }
+
+  function validateDesigner() {
+    var data = new FormData(form);
+    var phone = String(data.get('designer_phone') || '');
+    if (String(data.get('designer_name') || '').trim().length < 2) return 'Enter the designer’s name.';
+    if (!/^[3689]\d{7}$/.test(phone)) return 'Enter a valid designer mobile (8 digits, starting with 3, 6, 8 or 9).';
+    if (phone === String(data.get('homeowner_phone') || '')) return 'The designer’s number must be different from the homeowner’s number.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(data.get('designer_email') || '').trim())) return 'Enter the designer’s email.';
+    if (String(data.get('id_company') || '').trim().length < 2) return 'Enter the interior design company.';
+    return '';
+  }
+
+  document.getElementById('nextStep').addEventListener('click', function () {
+    var problem = validateHomeowner();
+    if (problem) return setErr(problem, 1);
+    showStep(2);
+  });
+  document.getElementById('backStep').addEventListener('click', function () {
+    showStep(1);
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (document.getElementById('step2').hidden) {
+      document.getElementById('nextStep').click();
+      return;
+    }
+    var home = validateHomeowner();
+    if (home) { showStep(1); return setErr(home, 1); }
+    var designer = validateDesigner();
+    if (designer) return setErr(designer, 2);
+    var data = new FormData(form);
     var button = document.getElementById('go');
     button.disabled = true;
     button.textContent = 'Saving your entry…';
@@ -109,16 +197,15 @@
       })
       .then(showCode)
       .catch(function (error) {
-        setErr(error.name === 'TimeoutError' ? 'This is taking too long. Check your connection. If a code already arrived by email, don’t submit again.' : error.message);
+        setErr(error.name === 'TimeoutError' ? 'This is taking too long. Check your connection. If a code already arrived by email, don’t submit again.' : error.message, 2);
         button.disabled = false;
-        button.textContent = 'Get my spin code →';
+        button.textContent = 'Submit & get my spin code';
       });
   });
 
   function showCode(result) {
-    document.getElementById('st1').className = 'step done';
-    document.getElementById('st1').querySelector('i').textContent = '✓';
-    document.getElementById('st2').className = 'step on';
+    markStep(3);
+    document.getElementById('st3').className = 'step on';
     var emailNote = result.emailStatus === 'sent'
       ? 'We also emailed it to <b>' + esc(result.email) + '</b>.'
       : 'Email isn’t sending from this server yet, so the screenshot is what counts. Staff can look the code up if you lose it.';
@@ -131,7 +218,7 @@
       '<div class="next-steps">' +
       '<div><i>1</i><span>Save this code. ' + emailNote + '</span></div>' +
       '<div><i>2</i><span>Walk to the big screen at the event.</span></div>' +
-      '<div><i>3</i><span>Type the code. Your interior designer enters their details, then you spin once.</span></div>' +
+      '<div><i>3</i><span>Type the code on the big screen. The wheel unlocks straight away, then you spin once.</span></div>' +
       '</div>' +
       '<div class="row-btns"><button class="btn-ghost" id="copyBtn" type="button">Copy code</button>' +
       '<a class="btn-wa" id="codeWa" target="_blank" rel="noopener">WhatsApp us</a></div>' +
@@ -163,10 +250,9 @@
     boot = parts[0];
     if (boot.whatsapp) document.getElementById('waLink').href = 'https://wa.me/' + boot.whatsapp;
     var slug = slugFromLocation();
+    if (!boot.events.length) return showBlocked('No event is open for spins right now.');
     if (!slug) {
-      if (!boot.events.length) return showBlocked('No event is open for spins right now.');
-      renderEvent(boot.events);
-      refreshSold(document.getElementById('eventSlug').value);
+      renderEvent(boot.events, '');
       return;
     }
     return fetch('/api/events/' + encodeURIComponent(slug)).then(function (res) {
@@ -176,8 +262,7 @@
       });
     }).then(function (data) {
       if (!data.event.active) return showBlocked(eventLabel(data.event) + ' is not open for new entries.');
-      locked = data.event;
-      renderEvent(boot.events);
+      renderEvent(boot.events, data.event.slug);
       SureWinWheel.markSold(document.getElementById('wheel'), boot.slots, data.soldOut || []);
     });
   }).catch(function (error) {
