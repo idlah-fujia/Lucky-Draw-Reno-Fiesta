@@ -29,6 +29,7 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:16p
 .card h2{font-size:24px;font-weight:900;letter-spacing:-.02em;line-height:1.15}
 .card .sub{color:var(--mut);font-size:14.5px;margin-top:6px}
 .f{display:flex;flex-direction:column;gap:0;margin-top:18px}
+[hidden]{display:none !important}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 label.fl,.field{display:flex;flex-direction:column;align-items:stretch;margin:0 0 20px}
 label.fl > span,.field > .qn{display:block;margin:0 0 6px;font-size:14px;font-weight:800;line-height:1.3;color:#1B1714}
@@ -222,7 +223,15 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .pill.submitted{background:#FFF4D6}
 .pill.spun{background:#FFE1CC;color:#8A3410}
 .pill.verified{background:#E5F8EE;color:#0E7A45}
-.pill.voided{background:#FFE4E1;color:#9F1239}
+.pill.voided,.pill.spam{background:#FFE4E1;color:#9F1239}
+.account-line{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;padding:10px 0;border-top:1px solid var(--line);white-space:nowrap}
+.account-line b,.account-line span{min-width:0}
+.account-line .role{font-weight:800;text-transform:capitalize}
+.account-line .acts{display:flex;gap:6px;margin-left:auto}
+.event-qr{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.event-qr img{width:112px;height:112px;border-radius:12px;background:#fff;justify-self:center}
+.event-live{font-weight:900;color:#0E7A45}
+@media(max-width:700px){.account-line{flex-wrap:wrap;white-space:normal}.account-line .acts{margin-left:0}}
 table.gridish{width:100%;border-collapse:collapse;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 12px 40px rgba(120,60,20,.08)}
 .table-scroll{overflow:auto;border-radius:18px;border:1px solid var(--line)}
 table.gridish th,table.gridish td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:top;white-space:nowrap}

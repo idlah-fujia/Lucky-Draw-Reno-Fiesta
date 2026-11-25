@@ -1,11 +1,19 @@
 import { createSign } from 'node:crypto'
+import { claimConflicts } from '../claims.js'
+import { generateCode } from '../codes.js'
+import { HttpError } from '../http.js'
 import { COLUMNS, cloneEntry, entryToRow, rowToEntry } from '../schema.js'
+import { columnLetter, headerRange, reconcileHeader, rowHasData, rowIsDuplicateHeader, sleep } from '../sheetHeader.js'
 
 const SHEET = 'Entries'
 const KIOSK_SHEET = 'KioskQr'
 const KIOSK_COLUMNS = ['event_slug', 'size', 'unit', 'position', 'updated_at']
 const USERS_SHEET = 'users'
 const USER_COLUMNS = ['id', 'name', 'email', 'role', 'password_hash', 'created_at', 'updated_at']
+const EVENTS_SHEET = 'Events'
+const EVENT_COLUMNS = ['slug', 'name', 'starts', 'ends', 'edition', 'active', 'created_at', 'created_by']
+const SETTINGS_SHEET = 'Settings'
+const SETTING_COLUMNS = ['key', 'value']
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 function privateKey() {
@@ -38,6 +46,7 @@ export class SheetsStore {
     this.chain = Promise.resolve()
     this.kioskChain = Promise.resolve()
     this.userChain = Promise.resolve()
+    this.eventChain = Promise.resolve()
     this.loaded = false
     this.token = null
     this.tokenExp = 0
@@ -115,39 +124,77 @@ export class SheetsStore {
   }
 
   async ensureTab(title) {
-    const meta = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}?fields=sheets.properties.title`)
-    const titles = (meta.sheets || []).map((sheet) => sheet.properties.title)
-    if (!titles.includes(title)) {
-      await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}:batchUpdate`, {
-        method: 'POST',
-        body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] })
-      })
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const meta = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}?fields=sheets.properties.title`)
+      const titles = (meta.sheets || []).map((sheet) => sheet.properties.title)
+      if (titles.includes(title)) return
+      try {
+        await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}:batchUpdate`, {
+          method: 'POST',
+          body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] })
+        })
+        return
+      } catch (error) {
+        if (!/already exists|duplicate/i.test(error.message || '') || attempt === 4) throw error
+        await sleep(150 * 2 ** attempt)
+      }
     }
   }
 
-  async ensureSheet() {
-    await this.ensureTab(SHEET)
+  async readGrid(sheetName) {
+    const range = encodeURIComponent(`${sheetName}!${headerRange(COLUMNS.length)}`)
+    const data = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}`)
+    return data.values || []
+  }
+
+  async writeHeader(sheetName, columns) {
+    const end = columnLetter(columns.length)
+    const range = encodeURIComponent(`${sheetName}!A1:${end}1`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      { method: 'PUT', body: JSON.stringify({ values: [columns] }) }
+    )
+  }
+
+  /**
+   * Open a tab and make row 1 match `columns`. A blank header is retried first,
+   * in case the other service is writing it. A shorter older header grows at
+   * the end. A wrong header is replaced only when the rows under it are empty
+   * or are a second copy of the header.
+   */
+  async ensureColumns(sheetName, columns) {
+    await this.ensureTab(sheetName)
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const values = await this.readGrid(sheetName)
+      const decision = reconcileHeader(values[0] || [], columns)
+      if (decision.action === 'ok') return values
+      if (decision.action === 'write' && attempt < 4) {
+        await sleep(150 * 2 ** attempt)
+        continue
+      }
+      if (decision.action === 'extend') {
+        console.log(`${sheetName} header is missing ${decision.missing.join(', ')}; adding those columns.`)
+        await this.writeHeader(sheetName, columns)
+        continue
+      }
+      if (decision.action === 'mismatch') {
+        const real = values.slice(1).filter((row) => rowHasData(row) && !rowIsDuplicateHeader(row, decision.header) && !rowIsDuplicateHeader(row, columns))
+        if (real.length) {
+          throw new Error(`The ${sheetName} tab header doesn't match and it already has rows. Header: ${decision.header.join(', ')}`)
+        }
+        console.log(`${sheetName} header was ${decision.header.join(', ') || 'blank'}; writing the current columns. No entry rows were removed.`)
+      }
+      await this.writeHeader(sheetName, columns)
+    }
+    throw new Error(`Could not prepare the ${sheetName} tab. Restart in a moment.`)
   }
 
   async reload() {
-    await this.ensureSheet()
-    const range = encodeURIComponent(`${SHEET}!A1:AJ`)
-    const data = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}`)
-    const values = data.values || []
-    if (values.length === 0) {
-      await this.writeRow(1, COLUMNS)
-      this.cache = []
-      this.loaded = true
-      return this.cache
-    }
-    const header = values[0]
-    const sameHeader = COLUMNS.every((key, index) => header[index] === key)
-    if (!sameHeader) {
-      throw new Error('The Entries tab already has a different header row. Rename that tab, or clear row 1, then restart. This app will write its own column names.')
-    }
+    const values = await this.ensureColumns(SHEET, COLUMNS)
     this.cache = []
     this.rowNumbers = new Map()
     values.slice(1).forEach((row, index) => {
+      if (rowIsDuplicateHeader(row, values[0]) || rowIsDuplicateHeader(row, COLUMNS)) return
       const entry = rowToEntry(row)
       if (!entry.id) return
       this.cache.push(entry)
@@ -155,6 +202,11 @@ export class SheetsStore {
     })
     this.loaded = true
     return this.cache
+  }
+
+  async readFresh() {
+    await this.reload()
+    return this.cache.map((row) => cloneEntry(row))
   }
 
   async writeRow(rowNumber, values) {
@@ -171,48 +223,73 @@ export class SheetsStore {
     return this.cache.map((row) => cloneEntry(row))
   }
 
-  async transaction(fn) {
-    const run = this.chain.then(async () => {
-      await this.reload()
-      const before = new Map(this.cache.map((row) => [row.id, cloneEntry(row)]))
-      const list = this.cache.map((row) => cloneEntry(row))
-      const result = await fn(list)
-      for (const entry of list) {
-        const prev = before.get(entry.id)
-        if (!prev) {
-          const rowNumber = await this.append(entry)
-          this.rowNumbers.set(entry.id, rowNumber)
-        } else if (JSON.stringify(prev) !== JSON.stringify(entry)) {
-          const rowNumber = this.rowNumbers.get(entry.id)
-          if (!rowNumber) throw new Error(`Sheet row for ${entry.code || entry.id} was lost. Reload and try again.`)
-          await this.writeRow(rowNumber, entryToRow(entry))
-        }
-      }
-      this.cache = list.map((row) => cloneEntry(row))
-      return result
-    })
+  async transaction(fn, options = {}) {
+    const oncePerEventIds = options.oncePerEventIds || ['IPHONE']
+    const run = this.chain.then(() => this.runClaim(fn, oncePerEventIds))
     this.chain = run.then(() => {}, () => {})
     return run
   }
 
+  async persistChanges(before, list) {
+    for (const entry of list) {
+      const prev = before.get(entry.id)
+      const rowNumber = this.rowNumbers.get(entry.id)
+      if (!prev && !rowNumber) {
+        const appended = await this.append(entry)
+        this.rowNumbers.set(entry.id, appended)
+      } else if (!prev || JSON.stringify(prev) !== JSON.stringify(entry)) {
+        if (!rowNumber) throw new Error(`Sheet row for ${entry.code || entry.id} was lost. Reload and try again.`)
+        await this.writeRow(rowNumber, entryToRow(entry))
+      }
+    }
+  }
+
+  async runClaim(fn, oncePerEventIds) {
+    let sawPrize = false
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await this.reload()
+      const before = new Map(this.cache.map((row) => [row.id, cloneEntry(row)]))
+      const list = this.cache.map((row) => cloneEntry(row))
+      const result = await fn(list)
+      const fresh = await this.readFresh()
+      const conflict = claimConflicts([...before.values()], list, fresh, { oncePerEventIds })
+      if (conflict) {
+        await sleep(40 * (attempt + 1))
+        continue
+      }
+      await this.persistChanges(before, list)
+      const after = await this.readFresh()
+      const lost = claimConflicts([...before.values()], list, after, { oncePerEventIds })
+      if (!lost) {
+        this.cache = list.map((row) => cloneEntry(row))
+        return result
+      }
+      if (lost === 'code' && reissueCodes(list, after)) {
+        await this.persistChanges(before, list)
+        const checked = await this.readFresh()
+        if (!claimConflicts([...before.values()], list, checked, { oncePerEventIds })) {
+          this.cache = list.map((row) => cloneEntry(row))
+          return result
+        }
+      }
+      if (lost === 'prize') {
+        sawPrize = true
+        restorePrizes(list, before, after, oncePerEventIds)
+        await this.persistChanges(before, list)
+      }
+      await sleep(40 * (attempt + 1))
+    }
+    throw new HttpError(409, sawPrize
+      ? 'That top prize has already been won for this event.'
+      : 'Please submit the form once more.')
+  }
+
   async readKioskQr() {
-    await this.ensureTab(KIOSK_SHEET)
-    const range = encodeURIComponent(`${KIOSK_SHEET}!A1:E`)
-    const data = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}`)
-    const values = data.values || []
-    if (values.length === 0) {
-      await this.writeKioskRows([KIOSK_COLUMNS])
-      return {}
-    }
-    const header = values[0]
-    const sameHeader = KIOSK_COLUMNS.every((key, index) => header[index] === key)
-    if (!sameHeader) {
-      throw new Error('The KioskQr tab already has a different header row. Rename that tab, then restart. This app will write its own column names.')
-    }
+    const values = await this.ensureColumns(KIOSK_SHEET, KIOSK_COLUMNS)
     const map = {}
     for (const row of values.slice(1)) {
       const slug = row[0]
-      if (!slug) continue
+      if (!slug || slug === KIOSK_COLUMNS[0]) continue
       map[slug] = {
         size: Number(row[1]),
         unit: row[2] || '',
@@ -246,20 +323,8 @@ export class SheetsStore {
   }
 
   async readUsers() {
-    await this.ensureTab(USERS_SHEET)
-    const range = encodeURIComponent(`${USERS_SHEET}!A1:G`)
-    const data = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}`)
-    const values = data.values || []
-    if (values.length === 0) {
-      await this.writeUserRows([USER_COLUMNS])
-      return []
-    }
-    const header = values[0]
-    const sameHeader = USER_COLUMNS.every((key, index) => header[index] === key)
-    if (!sameHeader) {
-      throw new Error('The users tab already has a different header row. Rename that tab, then restart.')
-    }
-    return values.slice(1).filter((row) => row[0]).map((row) => ({
+    const values = await this.ensureColumns(USERS_SHEET, USER_COLUMNS)
+    return values.slice(1).filter((row) => row[0] && row[0] !== USER_COLUMNS[0]).map((row) => ({
       id: row[0] || '',
       name: row[1] || '',
       email: row[2] || '',
@@ -321,15 +386,129 @@ export class SheetsStore {
     const match = updated.match(/![A-Z]+(\d+):/)
     return match ? Number(match[1]) : this.cache.length + 2
   }
+
+  async listEvents() {
+    const values = await this.ensureColumns(EVENTS_SHEET, EVENT_COLUMNS)
+    return values.slice(1).filter((row) => row[0] && row[0] !== EVENT_COLUMNS[0]).map((row) => ({
+      slug: row[0],
+      name: row[1] || row[0],
+      starts: row[2] || '',
+      ends: row[3] || row[2] || '',
+      edition: row[4] || '',
+      active: row[5] !== 'no',
+      created_at: row[6] || '',
+      created_by: row[7] || ''
+    }))
+  }
+
+  async saveEvents(list) {
+    await this.ensureTab(EVENTS_SHEET)
+    const rows = [EVENT_COLUMNS, ...list.map((event) => [
+      event.slug, event.name, event.starts || '', event.ends || '', event.edition || '',
+      event.active === false ? 'no' : 'yes', event.created_at || '', event.created_by || ''
+    ])]
+    const clearRange = encodeURIComponent(`${EVENTS_SHEET}!A:H`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${clearRange}:clear`,
+      { method: 'POST' }
+    )
+    const range = encodeURIComponent(`${EVENTS_SHEET}!A1`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      { method: 'PUT', body: JSON.stringify({ values: rows }) }
+    )
+  }
+
+  async updateEvents(fn) {
+    const run = this.eventChain.then(async () => {
+      const list = await this.listEvents()
+      await fn(list)
+      await this.saveEvents(list)
+      return list
+    })
+    this.eventChain = run.then(() => {}, () => {})
+    return run
+  }
+
+  async readSettings() {
+    const values = await this.ensureColumns(SETTINGS_SHEET, SETTING_COLUMNS)
+    const map = {}
+    for (const row of values.slice(1)) {
+      if (!row[0] || row[0] === SETTING_COLUMNS[0]) continue
+      map[row[0]] = row[1] || ''
+    }
+    return map
+  }
+
+  async writeSettings(map) {
+    await this.ensureTab(SETTINGS_SHEET)
+    const rows = [SETTING_COLUMNS, ...Object.entries(map).map(([key, value]) => [key, value == null ? '' : String(value)])]
+    const clearRange = encodeURIComponent(`${SETTINGS_SHEET}!A:B`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${clearRange}:clear`,
+      { method: 'POST' }
+    )
+    const range = encodeURIComponent(`${SETTINGS_SHEET}!A1`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      { method: 'PUT', body: JSON.stringify({ values: rows }) }
+    )
+  }
+
+  async readLiveSlug() {
+    const map = await this.readSettings()
+    return map.live_event || ''
+  }
+
+  async setLiveSlug(slug) {
+    const run = this.eventChain.then(async () => {
+      const map = await this.readSettings()
+      map.live_event = slug || ''
+      await this.writeSettings(map)
+      return map.live_event
+    })
+    this.eventChain = run.then(() => {}, () => {})
+    return run
+  }
 }
 
-function columnLetter(count) {
-  let n = count
-  let letters = ''
-  while (n > 0) {
-    const rem = (n - 1) % 26
-    letters = String.fromCharCode(65 + rem) + letters
-    n = Math.floor((n - 1) / 26)
+function reissueCodes(list, fresh) {
+  const used = new Set((fresh || []).map((row) => row.code).filter(Boolean))
+  let changed = false
+  for (const row of list) {
+    const clash = (fresh || []).find((other) => other.id !== row.id && other.code === row.code && other.status !== 'voided')
+    if (!clash) continue
+    let code = row.code
+    for (let n = 0; n < 8; n += 1) {
+      code = generateCode()
+      if (!used.has(code)) break
+    }
+    used.add(code)
+    row.code = code
+    changed = true
   }
-  return letters
+  return changed
+}
+
+function restorePrizes(list, before, fresh, oncePerEventIds) {
+  const limited = new Set(oncePerEventIds)
+  for (const row of list) {
+    const prev = before.get(row.id)
+    if (!row.prize_id || !limited.has(row.prize_id)) continue
+    if (prev && prev.prize_id === row.prize_id) continue
+    const taken = (fresh || []).find((other) =>
+      other.id !== row.id &&
+      other.event_slug === row.event_slug &&
+      other.prize_id === row.prize_id &&
+      other.status !== 'voided'
+    )
+    if (!taken) continue
+    row.prize_id = prev?.prize_id || ''
+    row.prize_label = prev?.prize_label || ''
+    row.prize_brand = prev?.prize_brand || ''
+    row.prize_slot = prev?.prize_slot || ''
+    row.spun_at = prev?.spun_at || ''
+    row.status = prev?.status || 'submitted'
+    row.updated_at = prev?.updated_at || row.updated_at
+  }
 }

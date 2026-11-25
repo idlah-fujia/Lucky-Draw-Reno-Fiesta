@@ -37,8 +37,17 @@ export const COLUMNS = [
   'voided_at',
   'updated_at',
   'verified_by',
-  'voided_by'
+  'voided_by',
+  'site_mode',
+  'spam_at',
+  'spam_by'
 ]
+
+export function versionLabel(siteMode) {
+  if (siteMode === 'event_day') return 'On-site'
+  if (siteMode === 'after_event') return 'After event'
+  return siteMode ? String(siteMode) : ''
+}
 
 export function emptyEntry() {
   const row = {}

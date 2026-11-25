@@ -9,6 +9,7 @@ import QRCode from 'qrcode'
 import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
 import { findEvent, getConfig, publicEvent } from './config.js'
 import { defaultEvent, eventMode, siteMode } from './mode.js'
+import { assertEventDate, mergeEvents, slugifyEventName, uniqueSlug } from './events.js'
 import { formatCode, generateCode, parseCode } from './codes.js'
 import { proofPath, validProofSig } from './sign.js'
 import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
@@ -17,11 +18,13 @@ import { MAX_PROOF_BYTES, cleanText, emailAddress, eventDate, homeownerPhone, de
 import { codeEmail, resultEmails } from './email.js'
 import { adminCookieHeader, readSession, sessionToken } from './auth.js'
 import { assertUserChange, hashPassword, normalizeEmail, publicUser, verifyPassword } from './users.js'
-import { toCsv } from './schema.js'
+import { toCsv, versionLabel } from './schema.js'
 import { GLOBAL_EVENT, QR_LIMITS, clampSize, envKioskQr, normalizeSaved, parsePosition, resolveKioskQr } from './kioskQr.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
+const ADMIN_SITE = 'https://lucky-draw-reno-fiesta.onrender.com'
+const CREATE_EVENT_LABEL = 'Create Event'
 
 function readPage(name) {
   return fs.readFileSync(path.join(publicDir, name), 'utf8')
@@ -32,6 +35,11 @@ export function createApp(deps) {
   const configOf = deps.getConfig || getConfig
   const fallbackMode = () => deps.siteMode || siteMode()
   const asPublic = (event) => publicEvent(event, fallbackMode())
+  async function liveConfig() {
+    const base = configOf()
+    const merged = mergeEvents(base.events, await store.listEvents(), await store.readLiveSlug())
+    return { ...base, events: merged.events, liveSlug: merged.liveSlug }
+  }
   const app = new Hono()
 
   app.onError((err, c) => {
@@ -51,12 +59,23 @@ export function createApp(deps) {
     ok: true,
     time: new Date().toISOString(),
     storage: store.mode,
+    siteMode: fallbackMode(),
     email: mailer.mode,
     files: files.mode
   }))
 
-  app.get('/api/bootstrap', (c) => {
-    const config = configOf()
+  app.use('*', async (c, next) => {
+    if (fallbackMode() !== 'event_day') return next()
+    const pathName = c.req.path
+    if (pathName !== '/admin' && !pathName.startsWith('/api/admin/')) return next()
+    const home = String(process.env.ADMIN_SITE_URL || ADMIN_SITE).replace(/\/$/, '')
+    if (requestBaseUrl(c).replace(/\/$/, '') === home) return next()
+    const query = new URL(c.req.url).search
+    return c.redirect(`${home}${pathName}${query}`, 302)
+  })
+
+  app.get('/api/bootstrap', async (c) => {
+    const config = await liveConfig()
     return c.json({
       today: todaySGT(),
       whatsapp: config.whatsapp,
@@ -70,7 +89,7 @@ export function createApp(deps) {
   })
 
   app.get('/api/kiosk/display', async (c) => {
-    const config = configOf()
+    const config = await liveConfig()
     const event = eventForScreen(config, c.req.query('event'))
     const qr = resolveKioskQr(await store.readKioskQr(), event.slug)
     return c.json({
@@ -81,13 +100,13 @@ export function createApp(deps) {
   })
 
   app.get('/api/kiosk/qr.png', async (c) => {
-    const config = configOf()
+    const config = await liveConfig()
     const event = eventForScreen(config, c.req.query('event'))
     return qrPng(c, formUrlFor(c, event.slug), `register-${event.slug}.png`)
   })
 
   app.get('/api/events/:slug', async (c) => {
-    const config = configOf()
+    const config = await liveConfig()
     const event = findEvent(config, c.req.param('slug'))
     if (!event) throw new HttpError(404, 'That event link is not recognised.')
     const list = await store.list()
@@ -103,7 +122,7 @@ export function createApp(deps) {
       throw new HttpError(413, 'That file is over 10 MB. Take a smaller photo or a PDF.')
     }
     const body = await c.req.parseBody()
-    const config = configOf()
+    const config = await liveConfig()
     const event = findEvent(config, String(body.event_slug || '').trim())
     if (!event || !event.active) throw new HttpError(400, 'Choose the event you attended.')
     const now = new Date()
@@ -178,10 +197,15 @@ export function createApp(deps) {
           spun_at: '',
           verified_at: '',
           voided_at: '',
-          updated_at: nowIso
+          updated_at: nowIso,
+          verified_by: '',
+          voided_by: '',
+          site_mode: fallbackMode(),
+          spam_at: '',
+          spam_by: ''
         }
         return createEntry(list, row)
-      })
+      }, { oncePerEventIds: oncePerEventIds(config) })
     } catch (error) {
       await files.remove(id).catch(() => {})
       throw error
@@ -216,7 +240,7 @@ export function createApp(deps) {
     const body = await c.req.json().catch(() => ({}))
     const parsed = parseCode(body.code)
     if (parsed.error) throw new HttpError(400, parsed.error)
-    const config = configOf()
+    const config = await liveConfig()
     const view = await store.transaction((list) => verifySpinCode(list, parsed.code, body.event, config))
     return c.json(view)
   })
@@ -231,7 +255,7 @@ export function createApp(deps) {
       designer_email: emailAddress(body.designer_email, 'the designer’s email'),
       id_company: cleanText(body.id_company, { min: 2, max: 120, label: 'the interior design company' })
     }
-    const config = configOf()
+    const config = await liveConfig()
     const entry = await store.transaction((list) => saveDesigner(list, parsed.code, fields, new Date().toISOString(), body.event))
     const list = await store.list()
     return c.json(attachSoldOut(kioskView(entry, config), list, config))
@@ -241,7 +265,7 @@ export function createApp(deps) {
     const body = await c.req.json().catch(() => ({}))
     const parsed = parseCode(body.code)
     if (parsed.error) throw new HttpError(400, parsed.error)
-    const config = configOf()
+    const config = await liveConfig()
     const prizes = prizeMap(config)
     let forced = null
     if (allowForcePrize && body.forcePrize && mayForcePrize(c)) {
@@ -274,7 +298,7 @@ export function createApp(deps) {
       }
       if (!prize) prize = pickPrize(config, sold)
       return spinEntry(list, parsed.code, prize, new Date().toISOString(), config, body.event)
-    })
+    }, { oncePerEventIds: oncePerEventIds(config) })
 
     let emailStatus = outcome.entry.result_email_status || ''
     if (!outcome.already) {
@@ -439,7 +463,7 @@ export function createApp(deps) {
   })
 
   app.get('/api/admin/entries', async (c) => {
-    const config = configOf()
+    const config = await liveConfig()
     const user = c.get('staff')
     let list = await freshLinks(await store.list(), c, fileSecret)
     if (user.role !== 'admin') {
@@ -448,6 +472,7 @@ export function createApp(deps) {
     return c.json({
       entries: list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
       events: config.events.map(asPublic),
+      liveSlug: config.liveSlug || '',
       storage: store.mode
     })
   })
@@ -457,12 +482,12 @@ export function createApp(deps) {
     const list = await freshLinks(await store.list(), c, fileSecret)
     c.header('Content-Type', 'text/csv; charset=utf-8')
     c.header('Content-Disposition', 'attachment; filename="sure-win-entries.csv"')
-    return c.body(toCsv(list))
+    return c.body(toCsv(list.map((entry) => ({ ...entry, site_mode: versionLabel(entry.site_mode) }))))
   })
 
   app.get('/api/admin/odds', async (c) => {
     requireAdmin(c)
-    const config = configOf()
+    const config = await liveConfig()
     const list = await store.list()
     const slug = c.req.query('event') || config.events.find((event) => event.active)?.slug
     const event = slug ? findEvent(config, slug) : null
@@ -493,7 +518,7 @@ export function createApp(deps) {
     const body = await c.req.json().catch(() => ({}))
     const actor = c.get('staff')
     const action = String(body.action || '')
-    if ((action === 'void' || action === 'undo-void') && actor.role !== 'admin') {
+    if (['void', 'undo-void', 'spam', 'undo-spam'].includes(action) && actor.role !== 'admin') {
       throw new HttpError(403, 'That needs an admin account.')
     }
     const entry = await store.transaction((list) => reviewEntry(list, id, action, new Date().toISOString(), actor.email))
@@ -503,7 +528,7 @@ export function createApp(deps) {
 
   app.get('/api/admin/kiosk-qr', async (c) => {
     requireAdmin(c)
-    const config = configOf()
+    const config = await liveConfig()
     const requested = String(c.req.query('event') || '').trim()
     const event = requested ? findEvent(config, requested) : null
     if (requested && !event) throw new HttpError(404, 'Unknown event.')
@@ -523,7 +548,7 @@ export function createApp(deps) {
   app.put('/api/admin/kiosk-qr', async (c) => {
     requireAdmin(c)
     const body = await c.req.json().catch(() => ({}))
-    const config = configOf()
+    const config = await liveConfig()
     const requested = String(body.event || '').trim()
     let key = GLOBAL_EVENT
     if (requested) {
@@ -540,17 +565,58 @@ export function createApp(deps) {
     return c.json({ ok: true, event: requested || null, saved })
   })
 
-  app.get('/api/admin/qr/:slug', async (c) => {
+  app.post('/api/admin/events', async (c) => {
+    const actor = requireAdmin(c)
+    const body = await c.req.json().catch(() => ({}))
+    const name = cleanText(body.name, { min: 2, max: 80, label: 'the event name' })
+    const date = assertEventDate(body.date)
+    const config = await liveConfig()
+    const taken = new Set(config.events.map((event) => event.slug))
+    const slug = uniqueSlug(slugifyEventName(name), taken)
+    const now = new Date().toISOString()
+    const created = {
+      slug,
+      name,
+      starts: date,
+      ends: date,
+      edition: '',
+      active: true,
+      created_at: now,
+      created_by: actor.email
+    }
+    await store.updateEvents(async (events) => {
+      if (events.some((event) => event.slug === slug)) throw new HttpError(409, 'That event name is already in use.')
+      events.push(created)
+    })
+    return c.json({
+      event: asPublic(created),
+      formUrl: formUrlFor(c, slug),
+      spinUrl: `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(slug)}`,
+      label: CREATE_EVENT_LABEL
+    })
+  })
+
+  app.post('/api/admin/live', async (c) => {
     requireAdmin(c)
-    const config = configOf()
+    const body = await c.req.json().catch(() => ({}))
+    const slug = String(body.slug || '').trim()
+    const config = await liveConfig()
+    const event = findEvent(config, slug)
+    if (!event || event.active === false) throw new HttpError(400, 'Choose an open event.')
+    await store.setLiveSlug(slug)
+    return c.json({ ok: true, liveSlug: slug })
+  })
+
+  app.get('/api/admin/qr/:slug', async (c) => {
+    const config = await liveConfig()
     const event = findEvent(config, c.req.param('slug'))
     if (!event) throw new HttpError(404, 'Unknown event.')
     return qrPng(c, formUrlFor(c, event.slug), `spin-${event.slug}.png`, { dark: '#1B0F33', light: '#FFFFFF' })
   })
 
   const htmlHeaders = { 'Cache-Control': 'no-cache' }
-  app.get('/', (c) => {
-    const event = defaultEvent(configOf())
+  app.get('/', async (c) => {
+    const event = pickLive(await liveConfig())
     if (!event) return c.html(readPage('index.html'), 200, htmlHeaders)
     if (fallbackMode() === 'event_day') {
       return c.redirect(`/spin?event=${encodeURIComponent(event.slug)}`, 302)
@@ -595,9 +661,17 @@ function eventForScreen(config, slug) {
     if (!event) throw new HttpError(404, 'That event link is not recognised.')
     return event
   }
-  const event = config.events.find((item) => item.active) || config.events[0]
+  const event = pickLive(config)
   if (!event) throw new HttpError(404, 'No event is configured.')
   return event
+}
+
+function pickLive(config) {
+  if (config.liveSlug) {
+    const chosen = findEvent(config, config.liveSlug)
+    if (chosen && chosen.active !== false) return chosen
+  }
+  return defaultEvent(config)
 }
 
 function formUrlFor(c, slug) {
@@ -643,8 +717,13 @@ async function freshLinks(entries, c, secret) {
   const base = requestBaseUrl(c)
   return entries.map((entry) => {
     if (!entry.proof_key) return entry
+    if (/^https?:\/\//i.test(String(entry.proof_link || ''))) return entry
     return { ...entry, proof_link: `${base}${proofPath(entry.proof_key, secret)}` }
   })
+}
+
+function oncePerEventIds(config) {
+  return (config.prizes || []).filter((prize) => prize.oncePerEvent).map((prize) => prize.id)
 }
 
 async function sendProof(c, store, files, id) {

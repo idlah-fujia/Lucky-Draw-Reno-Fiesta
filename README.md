@@ -17,7 +17,7 @@ This is a new site. It copies the look of the current Sure-Win page (navy, gold,
 
 Set `PUBLIC_BASE_URL` to that service’s own `https` address so the QR and emails use its host. An event can set `"mode": "event_day"` or `"mode": "after_event"` to override the service for that event only. The QR size control still changes the code. The position control is not used: the QR stays centred.
 
-Staff sign in at `/admin` with their own email and password. The first admin is created on startup from `ADMIN_EMAIL` (default `admin@renofiesta.sg`) and `ADMIN_PASSWORD` when no admin is stored yet. Admins manage accounts in **Staff accounts**. Staff can view entries and mark them verified. Export, void, proof files, LED settings, and account changes stay with admins, and the server refuses those calls. Accounts live in the `users` tab when Google Sheets is connected, otherwise `data/users.json`. On Render’s free disk that file is wiped on restart, so only the bootstrap admin comes back until Sheets is connected. `verified_by` and `voided_by` record who reviewed an entry.
+Staff sign in at `https://lucky-draw-reno-fiesta.onrender.com/admin`. The on-site service redirects `/admin` there. The Event QR codes section chooses the live event for both home pages. New events are stored in the sheet tab `Events`, and the live choice in `Settings`. The first admin is created on startup from `ADMIN_EMAIL` (default `admin@renofiesta.sg`) and `ADMIN_PASSWORD` when no admin is stored yet. Admins manage accounts in **Staff accounts**. Staff can view entries and mark them verified. Export, void, proof files, LED settings, and account changes stay with admins, and the server refuses those calls. Accounts live in the `users` tab when Google Sheets is connected, otherwise `data/users.json`. On Render’s free disk that file is wiped on restart, so only the bootstrap admin comes back until Sheets is connected. `verified_by` and `voided_by` record who reviewed an entry.
 
 ## The two pages
 
@@ -174,13 +174,13 @@ node scripts/env-from-google-json.js ~/Downloads/the-key-file.json SPREADSHEET_I
 9. Paste the three lines it prints into `.env`. Restart (`Ctrl+C`, then `npm start`).
 10. Submit one test entry. The Entries tab should gain a row. The admin banner should say the Google Sheet is connected.
 
-If startup says the sheet is not shared, go back to step 6. If it says the header does not match, rename the old Entries tab and restart so the app can create a fresh one.
+If startup says the sheet is not shared, go back to step 6. A header that is just missing newer columns at the end is extended in place, and a blank header is retried so two services can open the sheet together. If the header is a different set of names and the tab already has entries, rename that tab and restart.
 
 Proof files are not stored inside the sheet. The sheet has a `proof_link`. Anyone with that link can open the file, so only share the sheet with staff.
 
 ### Later, a database
 
-Rows go through `src/storage/`. `local.js` is the CSV file. `sheets.js` is Google Sheets. Both speak the same language: load the rows, change them, save. A proper database table (for example Cloudflare D1 or Postgres) would be a third file with those same two operations. The pages would not need to change. Run **one** server while the store is a sheet or a CSV. Two servers writing at once can race; a database is the point at which that becomes safe.
+Rows go through `src/storage/`. `local.js` is the CSV file. `sheets.js` is Google Sheets. Both speak the same language: load the rows, change them, save. A proper database table (for example Cloudflare D1 or Postgres) would be a third file with those same two operations. The pages would not need to change. The on-site and after-event services share one sheet. Each re-reads it before issuing a code or awarding the iPhone, and keeps its own in-process lock as well. A database is still the stronger lock if the two services ever write the same row at the same moment.
 
 ## Proof files
 

@@ -42,7 +42,21 @@
       </div>
     </div>
     <div class="banner" id="storeBanner"></div>
-    <section class="card" id="ledQrCard" data-testid="led-qr-panel" data-admin-only>
+    <section class="card" id="eventQrCard" data-testid="event-qr-codes">
+      <h2>Event QR codes</h2>
+      <p class="sub">The live event is the one each site opens from its home page, and the one the big screen shows when it has no event in the link. Staff can see which event is live.</p>
+      <div id="eventQrList"></div>
+      <p data-admin-only style="margin-top:12px"><button class="mini ok" type="button" id="createEventBtn" data-testid="create-event">Create Event</button></p>
+      <form class="f" id="createEventForm" hidden style="margin-top:12px">
+        <label class="fl"><span>Event name</span><input id="newEventName" required></label>
+        <label class="fl"><span>Event date</span><input id="newEventDate" type="date" required></label>
+        <div class="err" id="newEventErr" role="alert"></div>
+        <button class="go" type="submit">Create</button>
+        <button class="mini" id="cancelEventBtn" type="button">Cancel</button>
+      </form>
+      <div id="newEventResult" hidden></div>
+    </section>
+    <section class="card" id="ledQrCard" data-testid="led-qr-panel" hidden>
       <h2>LED screen QR</h2>
       <p class="sub">Size and place of the registration QR on the big screen. The screen checks for a new setting about every 20 seconds, and again when it resets. Saving here overrides <code>KIOSK_QR_SIZE</code> and <code>KIOSK_QR_POSITION</code> until the store is wiped.</p>
       <div class="led-grid">
@@ -78,21 +92,28 @@
     <div class="tools">
       <input id="q" type="search" placeholder="Search name, mobile or code" aria-label="Search entries">
       <select id="eventFilter" aria-label="Filter by event"></select>
+      <select id="versionFilter" data-testid="version-filter" aria-label="Filter by version">
+        <option value="">All versions</option>
+        <option value="event_day">On-site</option>
+        <option value="after_event">After event</option>
+      </select>
       <select id="statusFilter" aria-label="Filter by status">
         <option value="">All statuses</option>
         <option value="submitted">Submitted</option>
         <option value="spun">Spun</option>
         <option value="verified">Verified</option>
         <option value="voided">Voided</option>
+        <option value="spam">Spam</option>
       </select>
       <a class="mini ok" id="csvLink" data-admin-only href="/api/admin/entries.csv">Download CSV</a>
       <button class="mini" id="reloadBtn" type="button">Refresh</button>
+      <button class="mini" id="showAllBtn" type="button" data-testid="show-all" hidden>Show All</button>
     </div>
     <div class="table-scroll" style="margin-top:12px">
       <table class="gridish" id="table">
         <thead>
           <tr>
-            <th>When (SGT)</th><th>Event</th><th>Homeowner</th><th>Designer</th><th>Code</th><th>Status</th><th>Prize</th><th>Proof</th><th></th>
+            <th>When (SGT)</th><th>Version</th><th>Event</th><th>Homeowner</th><th>Designer</th><th>Code</th><th>Status</th><th>Prize</th><th>Proof</th><th></th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -101,16 +122,18 @@
     <p class="sub" id="empty" hidden style="margin-top:14px">No entries yet. When a homeowner submits the QR form, they show up here.</p>
     <section class="card" id="accountsCard" data-testid="staff-accounts" data-admin-only style="margin-top:16px">
       <h2>Staff accounts</h2>
-      <p class="sub">Admins can add people, change a role, reset a password, or remove an account. The last admin stays. On Render’s free disk these accounts are wiped on restart unless Google Sheets is connected.</p>
-      <form class="f" id="accountForm">
+      <p class="sub">Admins can add people, change a role, reset a password, or remove an account. The last admin stays. Passwords are stored hashed and are never shown. On Render’s free disk these accounts are wiped on restart unless Google Sheets is connected.</p>
+      <div id="accountList"></div>
+      <p style="margin-top:12px"><button class="mini ok" id="addStaffBtn" type="button" data-testid="add-staff">Add New Staff Account</button></p>
+      <form class="f" id="accountForm" hidden>
         <label class="fl"><span>Name</span><input id="accName" required></label>
         <label class="fl"><span>Email</span><input id="accEmail" type="email" required></label>
         <label class="fl"><span>Role</span><select id="accRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></label>
         <label class="fl"><span>Temporary password</span><input id="accPassword" type="text" minlength="8" required></label>
         <div class="err" id="accErr"></div>
         <button class="go" type="submit">Add account</button>
+        <button class="mini" id="cancelStaffBtn" type="button">Cancel</button>
       </form>
-      <div id="accountList" style="margin-top:16px"></div>
     </section>
     <div class="split">
       <section class="card" id="qrSection" data-admin-only>

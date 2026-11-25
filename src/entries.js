@@ -14,7 +14,8 @@ export function createEntry(list, entry) {
   const duplicate = list.find((row) =>
     row.event_slug === entry.event_slug &&
     row.homeowner_phone === entry.homeowner_phone &&
-    row.status !== 'voided'
+    row.status !== 'voided' &&
+    row.status !== 'spam'
   )
   if (duplicate) {
     throw new HttpError(
@@ -33,6 +34,9 @@ export function saveDesigner(list, code, fields, nowIso, eventSlug) {
   const entry = requireEventCode(list, code, eventSlug)
   if (entry.status === 'voided') {
     throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
+  }
+  if (entry.status === 'spam') {
+    throw new HttpError(409, 'This code can’t be used. Please see the IDLah booth.')
   }
   if (entry.prize_id) {
     throw new HttpError(409, 'This code has already been used.')
@@ -56,6 +60,9 @@ export function spinEntry(list, code, prize, nowIso, config, eventSlug) {
   const entry = requireEventCode(list, code, eventSlug)
   if (entry.status === 'voided') {
     throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
+  }
+  if (entry.status === 'spam') {
+    throw new HttpError(409, 'This code can’t be used. Please see the IDLah booth.')
   }
   if (entry.prize_id) return { entry, already: true }
   if (!entry.designer_name || !entry.designer_phone || !entry.designer_email || !entry.id_company) {
@@ -82,9 +89,20 @@ export function reviewEntry(list, id, action, nowIso, actor = '') {
   if (!entry) throw new HttpError(404, 'Entry not found.')
   if (action === 'verify') {
     if (entry.status === 'voided') throw new HttpError(409, 'Undo the void before verifying.')
+    if (entry.status === 'spam') throw new HttpError(409, 'Undo spam before verifying.')
     entry.status = 'verified'
     entry.verified_at = entry.verified_at || nowIso
     entry.verified_by = actor
+  } else if (action === 'spam') {
+    if (entry.status === 'voided') throw new HttpError(409, 'Undo the void before marking spam.')
+    entry.status = 'spam'
+    entry.spam_at = entry.spam_at || nowIso
+    entry.spam_by = actor
+  } else if (action === 'undo-spam') {
+    if (entry.status !== 'spam') throw new HttpError(409, 'This entry is not spam.')
+    entry.spam_at = ''
+    entry.spam_by = ''
+    restoreStatus(entry)
   } else if (action === 'void') {
     entry.status = 'voided'
     entry.voided_at = nowIso
@@ -92,10 +110,7 @@ export function reviewEntry(list, id, action, nowIso, actor = '') {
   } else if (action === 'undo-void') {
     if (entry.status !== 'voided') throw new HttpError(409, 'This entry is not voided.')
     entry.voided_at = ''
-    if (entry.prize_id && entry.verified_at) entry.status = 'verified'
-    else if (entry.prize_id) entry.status = 'spun'
-    else if (entry.verified_at) entry.status = 'verified'
-    else entry.status = 'submitted'
+    restoreStatus(entry)
   } else {
     throw new HttpError(400, 'Unknown action.')
   }
@@ -133,6 +148,7 @@ export function kioskView(entry, config) {
     eventEdition: entry.event_edition || ''
   }
   if (entry.status === 'voided') return { ...base, state: 'voided', soldOut }
+  if (entry.status === 'spam') return { ...base, state: 'spam', soldOut }
   if (entry.prize_id) {
     return {
       ...base,
@@ -164,4 +180,30 @@ export function attachSoldOut(view, list, config) {
     iphoneRedeemed: soldOut.includes('IPHONE'),
     canContinue: view.state === 'ready'
   }
+}
+
+function restoreStatus(entry) {
+  if (entry.prize_id && entry.verified_at) entry.status = 'verified'
+  else if (entry.prize_id) entry.status = 'spun'
+  else if (entry.verified_at) entry.status = 'verified'
+  else entry.status = 'submitted'
+}
+
+export function dashboardCounts(entries) {
+  const rows = entries || []
+  let submitted = 0
+  let spam = 0
+  let verified = 0
+  let voided = 0
+  let iphone = 0
+  for (const row of rows) {
+    const isSpam = row.status === 'spam' || !!row.spam_at
+    const isVoid = row.status === 'voided' || !!row.voided_at
+    if (row.code && !isSpam && !isVoid) submitted += 1
+    if (isSpam) spam += 1
+    if (row.verified_at) verified += 1
+    if (isVoid) voided += 1
+    if (row.prize_id === 'IPHONE' && !isVoid) iphone += 1
+  }
+  return { total: rows.length, submitted, spam, verified, voided, iphone }
 }

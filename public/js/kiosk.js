@@ -214,6 +214,7 @@
       SureWinWheel.markSold(wheel, boot.slots, sold);
       entry = view;
       if (view.state === 'voided') return showProblem('This code has been voided', 'Please see the IDLah booth. This spin can’t be used.', false);
+      if (view.state === 'spam') return showProblem('This code can’t be used', 'Please see the IDLah booth.', false);
       if (view.state === 'spun') return showAlready(view);
       if (view.state === 'needs_designer') {
         return showProblem('Designer details missing', 'This code has no interior designer on it, so it can’t spin. Please see the IDLah booth.', true);
@@ -454,6 +455,7 @@
       document.documentElement.classList.remove('spin-prefilled');
       document.body.classList.remove('spin-prefilled');
       if (view.state === 'voided') return showProblem('This code has been voided', 'Please see the IDLah booth. This spin can’t be used.', false);
+      if (view.state === 'spam') return showProblem('This code can’t be used', 'Please see the IDLah booth.', false);
       if (view.state === 'spun') return showAlready(view);
       showProblem('Code not accepted', view.state === 'needs_designer'
         ? 'This code has no interior designer on it, so it can’t spin.'

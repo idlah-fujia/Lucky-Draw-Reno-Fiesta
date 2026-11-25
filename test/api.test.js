@@ -514,6 +514,12 @@ test('staff can verify but cannot export, void, change settings, or open proof f
   assert.equal(settings.status, 403)
   const users = await app.request('/api/admin/users', { headers: { cookie: staffCookie } })
   assert.equal(users.status, 403)
+  const liveDenied = await app.request('/api/admin/live', {
+    method: 'POST',
+    headers: { cookie: staffCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'reno-fiesta-nov-2026' })
+  })
+  assert.equal(liveDenied.status, 403)
   const odds = await app.request('/api/admin/odds', { headers: { cookie: staffCookie } })
   assert.equal(odds.status, 403)
   const outbox = await app.request('/api/admin/outbox', { headers: { cookie: staffCookie } })
@@ -575,4 +581,54 @@ test('the prize pop-up stays for two minutes and counts down as m:ss', async () 
   assert.equal(`Closing in ${closingClock(119)}`, 'Closing in 1:59')
   assert.equal(`Closing in ${closingClock(5)}`, 'Closing in 0:05')
   assert.equal(`Closing in ${closingClock(0)}`, 'Closing in 0:00')
+})
+
+test('the on-site admin page redirects to the shared admin, and a created event can be set live', async () => {
+  const day = await build({ siteMode: 'event_day' })
+  const adminPage = await day.app.request('/admin', {
+    redirect: 'manual',
+    headers: { host: 'events-luckydrawrenofiesta.onrender.com', 'x-forwarded-proto': 'https' }
+  })
+  assert.equal(adminPage.status, 302)
+  assert.equal(adminPage.headers.get('location'), 'https://lucky-draw-reno-fiesta.onrender.com/admin')
+  const spin = await day.app.request('/spin')
+  assert.equal(spin.status, 200)
+
+  const { app } = await build()
+  const login = await app.request('/api/admin/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
+  })
+  const cookie = login.headers.get('set-cookie').split(';')[0]
+  const created = await json(await app.request('/api/admin/events', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Harbour Fest', date: '2026-12-01' })
+  }))
+  assert.equal(created.status, 200, created.body.error)
+  assert.equal(created.body.event.slug, 'harbour-fest')
+  assert.equal(created.body.event.starts, '2026-12-01')
+  assert.equal(created.body.event.ends, '2026-12-01')
+  assert.match(created.body.formUrl, /\/e\/harbour-fest$/)
+  assert.match(created.body.spinUrl, /\/spin\?event=harbour-fest$/)
+  const boot = await json(await app.request('/api/bootstrap'))
+  assert.ok(boot.body.events.some((event) => event.slug === 'harbour-fest'))
+  const madeLive = await json(await app.request('/api/admin/live', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'harbour-fest' })
+  }))
+  assert.equal(madeLive.status, 200)
+  const home = await app.request('/', { redirect: 'manual' })
+  assert.equal(home.status, 302)
+  assert.match(home.headers.get('location') || '', /\/e\/harbour-fest$/)
+  const screen = await json(await app.request('/api/kiosk/display'))
+  assert.equal(screen.body.event.slug, 'harbour-fest')
+  const html = await app.request('/admin')
+  const page = await html.text()
+  assert.match(page, /Event QR codes/)
+  assert.match(page, /Create Event/)
+  assert.match(page, /Add New Staff Account/)
+  assert.match(page, /data-testid="show-all"/)
+  assert.match(page, /id="stats"/)
 })

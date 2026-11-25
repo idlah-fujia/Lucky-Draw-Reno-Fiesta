@@ -1,5 +1,6 @@
 (function () {
-  var state = { entries: [], events: [], session: null, led: null, ledPosition: 'top-center' };
+  var CREATE_EVENT_LABEL = 'Create Event';
+  var state = { entries: [], events: [], liveSlug: '', session: null, led: null, ledPosition: 'top-center', showAll: false };
   var POS_LABELS = [
     ['top-left', 'Top left'], ['top-center', 'Top centre'], ['top-right', 'Top right'],
     ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom centre'], ['bottom-right', 'Bottom right']
@@ -63,7 +64,52 @@
     fetch('/api/admin/logout', { method: 'POST' }).finally(function () { state.session = null; showLogin(); });
   });
   document.getElementById('reloadBtn').addEventListener('click', load);
-  ['q', 'eventFilter', 'statusFilter'].forEach(function (id) {
+  document.getElementById('createEventBtn').textContent = CREATE_EVENT_LABEL;
+  document.getElementById('showAllBtn').addEventListener('click', function () {
+    state.showAll = !state.showAll;
+    renderTable();
+  });
+  document.getElementById('createEventBtn').addEventListener('click', function () {
+    document.getElementById('createEventForm').hidden = false;
+    document.getElementById('newEventName').focus();
+  });
+  document.getElementById('cancelEventBtn').addEventListener('click', function () {
+    document.getElementById('createEventForm').hidden = true;
+    document.getElementById('newEventErr').textContent = '';
+  });
+  document.getElementById('createEventForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var err = document.getElementById('newEventErr');
+    err.textContent = '';
+    api('/api/admin/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('newEventName').value,
+        date: document.getElementById('newEventDate').value
+      })
+    }).then(function (created) {
+      document.getElementById('createEventForm').reset();
+      document.getElementById('createEventForm').hidden = true;
+      var box = document.getElementById('newEventResult');
+      box.hidden = false;
+      box.innerHTML = '<div class="event-qr"><img alt="QR for ' + esc(created.event.name) + '" src="/api/admin/qr/' + encodeURIComponent(created.event.slug) + '">' +
+        '<div><b>' + esc(created.event.name) + '</b>' +
+        '<p class="sub">Created. The QR is centred and uses the usual size.</p>' +
+        '<p><a href="' + esc(created.spinUrl) + '">Big screen</a></p>' +
+        '<p style="font-weight:800;word-break:break-all">' + esc(created.formUrl) + '</p></div></div>';
+      return load();
+    }).catch(function (error) { err.textContent = error.message; });
+  });
+  document.getElementById('addStaffBtn').addEventListener('click', function () {
+    document.getElementById('accountForm').hidden = false;
+    document.getElementById('accName').focus();
+  });
+  document.getElementById('cancelStaffBtn').addEventListener('click', function () {
+    document.getElementById('accountForm').hidden = true;
+    document.getElementById('accErr').textContent = '';
+  });
+  ['q', 'eventFilter', 'versionFilter', 'statusFilter'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', renderTable);
   });
   document.getElementById('oddsEvent').addEventListener('change', loadOdds);
@@ -126,14 +172,16 @@
     return Promise.all(jobs).then(function (parts) {
       state.entries = parts[0].entries;
       state.events = parts[0].events;
+      state.liveSlug = parts[0].liveSlug || '';
       fillFilters();
       banner();
       applyRole();
+      renderEventQrs();
       renderTable();
       if (!admin) return;
       renderQrs();
       renderOutbox(parts[1]);
-      return Promise.all([loadOdds(), loadLed(), loadAccounts()]);
+      return Promise.all([loadOdds(), loadAccounts()]);
     });
   }
 
@@ -218,12 +266,20 @@
     if (oddsCurrent) odds.value = oddsCurrent;
   }
 
+  function versionLabel(mode) {
+    if (mode === 'event_day') return 'On-site';
+    if (mode === 'after_event') return 'After event';
+    return '—';
+  }
+
   function filtered() {
     var q = document.getElementById('q').value.trim().toLowerCase();
     var event = document.getElementById('eventFilter').value;
+    var version = document.getElementById('versionFilter').value;
     var status = document.getElementById('statusFilter').value;
     return state.entries.filter(function (row) {
       if (event && row.event_slug !== event) return false;
+      if (version && row.site_mode !== version) return false;
       if (status && row.status !== status) return false;
       if (!q) return true;
       var hay = [row.homeowner_name, row.homeowner_phone, row.homeowner_email, row.code, row.id_company, row.designer_name, row.prize_label, row.delivery_address].join(' ').toLowerCase();
@@ -231,31 +287,59 @@
     });
   }
 
+  function scoped() {
+    var event = document.getElementById('eventFilter').value;
+    var version = document.getElementById('versionFilter').value;
+    return state.entries.filter(function (row) {
+      if (event && row.event_slug !== event) return false;
+      if (version && row.site_mode !== version) return false;
+      return true;
+    });
+  }
+
+  function tileCounts(rows) {
+    var counts = { total: rows.length, submitted: 0, spam: 0, verified: 0, voided: 0, iphone: 0 };
+    rows.forEach(function (row) {
+      var isSpam = row.status === 'spam' || !!row.spam_at;
+      var isVoid = row.status === 'voided' || !!row.voided_at;
+      if (row.code && !isSpam && !isVoid) counts.submitted += 1;
+      if (isSpam) counts.spam += 1;
+      if (row.verified_at) counts.verified += 1;
+      if (isVoid) counts.voided += 1;
+      if (row.prize_id === 'IPHONE' && !isVoid) counts.iphone += 1;
+    });
+    return counts;
+  }
+
   function renderTable() {
     var rows = filtered();
+    var shown = state.showAll ? rows : rows.slice(0, 10);
     var body = document.getElementById('rows');
     document.getElementById('empty').hidden = state.entries.length !== 0;
-    var counts = { submitted: 0, spun: 0, verified: 0, voided: 0, iphone: 0 };
-    state.entries.forEach(function (row) {
-      counts[row.status] = (counts[row.status] || 0) + 1;
-      if (row.prize_id === 'IPHONE' && row.status !== 'voided') counts.iphone += 1;
-    });
+    var counts = tileCounts(scoped());
     document.getElementById('stats').innerHTML = [
-      ['Entries', state.entries.length],
-      ['Submitted', counts.submitted || 0],
-      ['Spun', counts.spun || 0],
-      ['Verified', counts.verified || 0],
-      ['Voided', counts.voided || 0],
+      ['Total entries', counts.total],
+      ['Submitted', counts.submitted],
+      ['Spam', counts.spam],
+      ['Verified', counts.verified],
+      ['Voided', counts.voided],
       ['iPhones won', counts.iphone]
-    ].map(function (item) { return '<div class="stat"><b>' + item[1] + '</b><span>' + item[0] + '</span></div>'; }).join('');
+    ].map(function (item) { return '<div class="stat" data-testid="stat-' + item[0].toLowerCase().replace(/\s+/g, '-') + '"><b>' + item[1] + '</b><span>' + item[0] + '</span></div>'; }).join('');
+    var more = document.getElementById('showAllBtn');
+    more.hidden = rows.length <= 10;
+    more.textContent = state.showAll ? 'Show less' : 'Show All';
+    rows = shown;
     body.innerHTML = rows.map(function (row) {
       var actions = '';
       var admin = state.session && state.session.role === 'admin';
-      if (row.status !== 'voided' && row.status !== 'verified') actions += '<button class="mini ok" data-act="verify" data-id="' + row.id + '">Verify</button> ';
-      if (admin && row.status !== 'voided') actions += '<button class="mini danger" data-act="void" data-id="' + row.id + '">Void</button>';
+      if (row.status !== 'voided' && row.status !== 'verified' && row.status !== 'spam') actions += '<button class="mini ok" data-act="verify" data-id="' + row.id + '">Verify</button> ';
+      if (admin && row.status !== 'voided' && row.status !== 'spam') actions += '<button class="mini danger" data-act="void" data-id="' + row.id + '">Void</button>';
       if (admin && row.status === 'voided') actions += '<button class="mini" data-act="undo-void" data-id="' + row.id + '">Undo void</button>';
+      if (admin && row.status !== 'spam' && row.status !== 'voided') actions += '<button class="mini" data-act="spam" data-id="' + row.id + '">Mark as spam</button> ';
+      if (admin && row.status === 'spam') actions += '<button class="mini" data-act="undo-spam" data-id="' + row.id + '">Undo spam</button>';
       return '<tr>' +
         '<td>' + esc(when(row.created_at)) + '</td>' +
+        '<td data-testid="row-version">' + esc(versionLabel(row.site_mode)) + '</td>' +
         '<td>' + esc(row.event_name) + '</td>' +
         '<td><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
         '<td data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
@@ -265,7 +349,7 @@
         '<td>' + (row.proof_link ? '<a href="' + esc(row.proof_link) + '" target="_blank" rel="noopener">Open file</a>' : '—') + '</td>' +
         '<td>' + actions + ' <button class="mini" data-act="toggle" data-id="' + row.id + '">Details</button></td>' +
         '</tr>' +
-        '<tr class="detail" id="detail-' + row.id + '" hidden><td colspan="9">' + detail(row) + '</td></tr>';
+        '<tr class="detail" id="detail-' + row.id + '" hidden><td colspan="10">' + detail(row) + '</td></tr>';
     }).join('');
   }
 
@@ -281,6 +365,7 @@
       ' · <b>Spun.</b> ' + esc(when(row.spun_at) || '—') +
       ' · <b>Verified.</b> ' + esc(when(row.verified_at) || '—') + (row.verified_by ? ' by ' + esc(row.verified_by) : '') +
       ' · <b>Voided.</b> ' + esc(when(row.voided_at) || '—') + (row.voided_by ? ' by ' + esc(row.voided_by) : '') +
+      ' · <b>Spam.</b> ' + esc(when(row.spam_at) || '—') + (row.spam_by ? ' by ' + esc(row.spam_by) : '') +
       '<br><b>Declarations.</b> contract ' + esc(row.decl_contract) + ', genuine ' + esc(row.decl_genuine) + ', verify ' + esc(row.decl_verify) + ', terms ' + esc(row.decl_tnc) +
       '<br><b>File.</b> ' + esc(row.proof_filename) + ' · ' + esc(row.proof_mime) + ' · ' + esc(row.proof_bytes) + ' bytes';
   }
@@ -295,11 +380,41 @@
       return;
     }
     if (btn.dataset.act === 'void' && !confirm('Void this entry? The code will not spin, and a voided iPhone can be won again.')) return;
+    if (btn.dataset.act === 'spam' && !confirm('Mark this entry as spam? It will not count as submitted.')) return;
     btn.disabled = true;
     api('/api/admin/entries/' + id, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: btn.dataset.act })
+    }).then(load).catch(function (error) { alert(error.message); btn.disabled = false; });
+  });
+
+  function renderEventQrs() {
+    var host = document.getElementById('eventQrList');
+    var admin = state.session && state.session.role === 'admin';
+    host.innerHTML = state.events.map(function (event) {
+      var live = event.slug === state.liveSlug;
+      var spin = location.origin + '/spin?event=' + encodeURIComponent(event.slug);
+      var form = location.origin + '/e/' + encodeURIComponent(event.slug);
+      var control = live
+        ? '<span class="event-live" data-testid="live-event">Live</span>'
+        : (admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '');
+      return '<div class="event-qr" data-testid="event-qr-row"><img alt="QR for ' + esc(event.name) + '" src="/api/admin/qr/' + encodeURIComponent(event.slug) + '">' +
+        '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b> ' + control +
+        '<p class="sub">' + esc(event.starts || '') + (event.ends && event.ends !== event.starts ? ' to ' + esc(event.ends) : '') + '</p>' +
+        '<p><a href="' + esc(spin) + '">Big screen</a> · <a href="' + esc(form) + '">Phone form</a></p>' +
+        '<p style="font-weight:800;word-break:break-all">' + esc(form) + '</p></div></div>';
+    }).join('');
+  }
+
+  document.getElementById('eventQrList').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-live]');
+    if (!btn) return;
+    btn.disabled = true;
+    api('/api/admin/live', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: btn.dataset.live })
     }).then(load).catch(function (error) { alert(error.message); btn.disabled = false; });
   });
 
@@ -342,11 +457,12 @@
     return api('/api/admin/users').then(function (data) {
       var host = document.getElementById('accountList');
       host.innerHTML = data.users.map(function (user) {
-        return '<div class="qr-card" data-testid="account-row"><div><b>' + esc(user.name) + '</b> · ' + esc(user.role) +
-          '<p class="sub">' + esc(user.email) + '</p>' +
-          '<p><button class="mini" type="button" data-user="' + user.id + '" data-user-act="role" data-role="' + (user.role === 'admin' ? 'staff' : 'admin') + '">Make ' + (user.role === 'admin' ? 'staff' : 'admin') + '</button> ' +
-          '<button class="mini" type="button" data-user="' + user.id + '" data-user-act="password">Reset password</button> ' +
-          '<button class="mini danger" type="button" data-user="' + user.id + '" data-user-act="delete">Remove</button></p></div></div>';
+        return '<div class="account-line" data-testid="account-row"><b>' + esc(user.name) + '</b>' +
+          '<span>' + esc(user.email) + '</span>' +
+          '<span class="role">' + esc(user.role) + '</span>' +
+          '<span class="acts"><button class="mini" type="button" data-user="' + user.id + '" data-user-act="role" data-role="' + (user.role === 'admin' ? 'staff' : 'admin') + '">Make ' + (user.role === 'admin' ? 'staff' : 'admin') + '</button>' +
+          '<button class="mini" type="button" data-user="' + user.id + '" data-user-act="password">Reset password</button>' +
+          '<button class="mini danger" type="button" data-user="' + user.id + '" data-user-act="delete">Remove</button></span></div>';
       }).join('');
     });
   }
@@ -366,6 +482,7 @@
       })
     }).then(function () {
       document.getElementById('accountForm').reset();
+      document.getElementById('accountForm').hidden = true;
       return loadAccounts();
     }).catch(function (error) { err.textContent = error.message; });
   });
