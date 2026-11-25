@@ -1,0 +1,453 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
+import { Hono } from 'hono'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { getConnInfo } from '@hono/node-server/conninfo'
+import QRCode from 'qrcode'
+import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
+import { findEvent, getConfig, publicEvent } from './config.js'
+import { formatCode, generateCode, parseCode } from './codes.js'
+import { proofPath, validProofSig } from './sign.js'
+import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
+import { attachSoldOut, createEntry, firstName, kioskView, reviewEntry, saveDesigner, spinEntry, verifySpinCode } from './entries.js'
+import { MAX_PROOF_BYTES, cleanText, emailAddress, eventDate, homeownerPhone, designerPhone, isUuid, requireYes, safeFilename, sniffProof } from './validate.js'
+import { codeEmail, resultEmails } from './email.js'
+import { adminCookie, adminCookieHeader, passwordsMatch, readAdmin } from './auth.js'
+import { toCsv } from './schema.js'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const publicDir = path.join(root, 'public')
+
+function readPage(name) {
+  return fs.readFileSync(path.join(publicDir, name), 'utf8')
+}
+
+export function createApp(deps) {
+  const { store, files, mailer, adminPassword, fileSecret, allowForcePrize = false } = deps
+  const configOf = deps.getConfig || getConfig
+  const app = new Hono()
+
+  app.onError((err, c) => {
+    if (err instanceof HttpError || err.status) {
+      return c.json({ error: err.message }, err.status || 400)
+    }
+    console.error(err)
+    return c.json({ error: 'Something went wrong. Please try again.' }, 500)
+  })
+
+  app.use('/api/*', async (c, next) => {
+    await next()
+    c.header('Cache-Control', 'no-store')
+  })
+
+  app.get('/api/health', (c) => c.json({
+    ok: true,
+    time: new Date().toISOString(),
+    storage: store.mode,
+    email: mailer.mode,
+    files: files.mode
+  }))
+
+  app.get('/api/bootstrap', (c) => {
+    const config = configOf()
+    return c.json({
+      today: todaySGT(),
+      whatsapp: config.whatsapp,
+      kioskResetSeconds: config.kioskResetSeconds || 25,
+      invalidResetSeconds: config.invalidResetSeconds || 12,
+      idleResetSeconds: config.idleResetSeconds || 90,
+      events: config.events.filter((event) => event.active).map(publicEvent),
+      slots: config.slots
+    })
+  })
+
+  app.get('/api/events/:slug', async (c) => {
+    const config = configOf()
+    const event = findEvent(config, c.req.param('slug'))
+    if (!event) throw new HttpError(404, 'That event link is not recognised.')
+    const list = await store.list()
+    return c.json({
+      event: publicEvent(event),
+      soldOut: soldOutIds(list, event.slug, config)
+    })
+  })
+
+  app.post('/api/entries', async (c) => {
+    const length = Number(c.req.header('content-length') || 0)
+    if (length > MAX_PROOF_BYTES + 1024 * 256) {
+      throw new HttpError(413, 'That file is over 10 MB. Take a smaller photo or a PDF.')
+    }
+    const body = await c.req.parseBody()
+    const config = configOf()
+    const event = findEvent(config, String(body.event_slug || '').trim())
+    if (!event || !event.active) throw new HttpError(400, 'Choose the event you attended.')
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const phone = homeownerPhone(body.homeowner_phone)
+    const file = body.proof
+    if (!file || typeof file === 'string' || typeof file.arrayBuffer !== 'function') {
+      throw new HttpError(400, 'Upload the down payment receipt or signed contract.')
+    }
+    const buffer = Buffer.from(await file.arrayBuffer())
+    if (buffer.length > MAX_PROOF_BYTES) throw new HttpError(413, 'Proof file must be under 10 MB.')
+    const mime = sniffProof(buffer, file.name)
+    if (!mime) throw new HttpError(400, 'Upload a photo (JPG, PNG, WEBP or HEIC) or a PDF.')
+    requireYes(body.decl_contract, 'Please confirm the contract declaration.')
+    requireYes(body.decl_genuine, 'Please confirm the details are true.')
+    requireYes(body.decl_verify, 'Please agree that IDLah may verify this entry.')
+    requireYes(body.tnc, 'Please agree to the terms and conditions.')
+
+    const id = randomUUID()
+    const filename = safeFilename(file.name)
+    await files.save(id, { buffer, contentType: mime })
+
+    let entry
+    try {
+      entry = await store.transaction((list) => {
+        let code = ''
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          code = generateCode()
+          if (!list.some((row) => row.code === code)) break
+        }
+        const base = requestBaseUrl(c)
+        const row = {
+          id,
+          code,
+          status: 'submitted',
+          event_slug: event.slug,
+          event_name: event.name,
+          event_edition: event.edition || '',
+          event_date: eventDate(body.event_date, event, now),
+          homeowner_name: cleanText(body.homeowner_name, { min: 2, max: 80, label: 'the homeowner’s name' }),
+          homeowner_phone: phone,
+          homeowner_email: emailAddress(body.homeowner_email, 'the homeowner’s email'),
+          delivery_address: cleanText(body.delivery_address, { min: 8, max: 300, label: 'the prize delivery address' }),
+          designer_name: '',
+          designer_phone: '',
+          designer_email: '',
+          id_company: '',
+          proof_key: id,
+          proof_link: `${base}${proofPath(id, fileSecret)}`,
+          proof_filename: filename,
+          proof_mime: mime,
+          proof_bytes: String(buffer.length),
+          prize_id: '',
+          prize_label: '',
+          prize_brand: '',
+          prize_slot: '',
+          decl_contract: 'yes',
+          decl_genuine: 'yes',
+          decl_verify: 'yes',
+          decl_tnc: 'yes',
+          code_email_status: '',
+          result_email_status: '',
+          created_at: nowIso,
+          designer_saved_at: '',
+          spun_at: '',
+          verified_at: '',
+          voided_at: '',
+          updated_at: nowIso
+        }
+        return createEntry(list, row)
+      })
+    } catch (error) {
+      await files.remove(id).catch(() => {})
+      throw error
+    }
+
+    const spinUrl = `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(event.slug)}`
+    const mailed = await mailer.send(codeEmail({ entry, spinUrl, whatsapp: config.whatsapp }))
+    await store.transaction((list) => {
+      const row = list.find((item) => item.id === entry.id)
+      if (row) {
+        row.code_email_status = mailed.status
+        row.updated_at = new Date().toISOString()
+      }
+    })
+
+    return c.json({
+      code: entry.code,
+      codeDisplay: formatCode(entry.code),
+      firstName: firstName(entry.homeowner_name),
+      email: entry.homeowner_email,
+      emailStatus: mailed.status,
+      event: publicEvent(event),
+      spinUrl
+    })
+  })
+
+  app.post('/api/spin/lookup', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const parsed = parseCode(body.code)
+    if (parsed.error) throw new HttpError(400, parsed.error)
+    const config = configOf()
+    const view = await store.transaction((list) => verifySpinCode(list, parsed.code, body.event, config))
+    return c.json(view)
+  })
+
+  app.post('/api/spin/designer', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const parsed = parseCode(body.code)
+    if (parsed.error) throw new HttpError(400, parsed.error)
+    const fields = {
+      designer_name: cleanText(body.designer_name, { min: 2, max: 80, label: 'the designer’s name' }),
+      designer_phone: designerPhone(body.designer_phone),
+      designer_email: emailAddress(body.designer_email, 'the designer’s email'),
+      id_company: cleanText(body.id_company, { min: 2, max: 120, label: 'the interior design company' })
+    }
+    const config = configOf()
+    const entry = await store.transaction((list) => saveDesigner(list, parsed.code, fields, new Date().toISOString(), body.event))
+    const list = await store.list()
+    return c.json(attachSoldOut(kioskView(entry, config), list, config))
+  })
+
+  app.post('/api/spin/go', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const parsed = parseCode(body.code)
+    if (parsed.error) throw new HttpError(400, parsed.error)
+    const config = configOf()
+    const prizes = prizeMap(config)
+    let forced = null
+    if (allowForcePrize && body.forcePrize && mayForcePrize(c)) {
+      const prize = prizes.get(String(body.forcePrize))
+      if (!prize) throw new HttpError(400, 'Unknown prize.')
+      const slot = config.slots.findIndex((id) => id === prize.id)
+      if (slot < 0) throw new HttpError(400, 'That prize is not on the wheel.')
+      forced = { slot, id: prize.id, label: prize.label, brand: prize.brand, oncePerEvent: !!prize.oncePerEvent }
+    }
+    const outcome = await store.transaction((list) => {
+      // The store runs this alone: it reloads the sheet or file, checks the
+      // code and the iPhone, then saves. The next spin cannot start until
+      // that save has finished, so two spins cannot both take the iPhone.
+      const view = verifySpinCode(list, parsed.code, body.event, config)
+      const existing = list.find((row) => row.code === parsed.code)
+      if (!view.canContinue) {
+        if (existing.status === 'voided') {
+          throw new HttpError(409, 'This code has been voided. Please see the IDLah booth.')
+        }
+        if (existing.prize_id) return { entry: existing, already: true }
+        throw new HttpError(409, 'This code can’t be used.')
+      }
+      const sold = view.soldOut
+      let prize = forced
+      if (prize?.oncePerEvent && sold.includes(prize.id)) {
+        throw new HttpError(409, 'The iPhone has been fully redeemed for this event.')
+      }
+      if (!prize) prize = pickPrize(config, sold)
+      return spinEntry(list, parsed.code, prize, new Date().toISOString(), config, body.event)
+    })
+
+    let emailStatus = outcome.entry.result_email_status || ''
+    if (!outcome.already) {
+      const spinUrl = `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(outcome.entry.event_slug)}`
+      const messages = resultEmails({ entry: outcome.entry, spinUrl, whatsapp: config.whatsapp })
+      const results = []
+      for (const message of messages) results.push(await mailer.send(message))
+      emailStatus = results.every((item) => item.status === 'sent')
+        ? 'sent'
+        : results.some((item) => item.status === 'failed')
+          ? 'failed'
+          : 'logged'
+      await store.transaction((list) => {
+        const row = list.find((item) => item.id === outcome.entry.id)
+        if (row) {
+          row.result_email_status = emailStatus
+          row.updated_at = new Date().toISOString()
+        }
+      })
+      outcome.entry.result_email_status = emailStatus
+    }
+
+    const list = await store.list()
+    const view = attachSoldOut(kioskView(outcome.entry, config), list, config)
+    return c.json({ ...view, already: outcome.already, emailStatus })
+  })
+
+  app.get('/proof/:id/:sig', async (c) => {
+    const id = c.req.param('id')
+    if (!isUuid(id) || !validProofSig(id, c.req.param('sig'), fileSecret)) {
+      throw new HttpError(404, 'That file link does not work.')
+    }
+    return sendProof(c, store, files, id)
+  })
+
+  app.post('/api/admin/login', async (c) => {
+    const ip = remoteIp(c)
+    if (!rateLimit(`login:${ip}`, 8, 15 * 60 * 1000)) {
+      throw new HttpError(429, 'Too many tries. Wait a few minutes.')
+    }
+    const body = await c.req.json().catch(() => ({}))
+    if (!passwordsMatch(body.password || '', adminPassword)) {
+      throw new HttpError(401, 'That password is not right.')
+    }
+    const secure = requestBaseUrl(c).startsWith('https://')
+    c.header('Set-Cookie', adminCookieHeader(adminCookie(adminPassword), { secure }))
+    return c.json({ ok: true, storage: store.mode, email: mailer.mode, files: files.mode })
+  })
+
+  app.post('/api/admin/logout', (c) => {
+    const secure = requestBaseUrl(c).startsWith('https://')
+    c.header('Set-Cookie', adminCookieHeader('', { secure, clear: true }))
+    return c.json({ ok: true })
+  })
+
+  app.use('*', async (c, next) => {
+    const pathName = c.req.path
+    if (pathName.startsWith('/api/admin/') && pathName !== '/api/admin/login') {
+      if (!readAdmin(c, adminPassword)) throw new HttpError(401, 'Sign in again.')
+    }
+    await next()
+  })
+
+  app.get('/api/admin/session', (c) => c.json({
+    ok: true,
+    storage: store.mode,
+    email: mailer.mode,
+    files: files.mode
+  }))
+
+  app.get('/api/admin/entries', async (c) => {
+    const config = configOf()
+    const list = await freshLinks(await store.list(), c, fileSecret)
+    return c.json({
+      entries: list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
+      events: config.events.map(publicEvent),
+      storage: store.mode
+    })
+  })
+
+  app.get('/api/admin/entries.csv', async (c) => {
+    const list = await freshLinks(await store.list(), c, fileSecret)
+    c.header('Content-Type', 'text/csv; charset=utf-8')
+    c.header('Content-Disposition', 'attachment; filename="sure-win-entries.csv"')
+    return c.body(toCsv(list))
+  })
+
+  app.get('/api/admin/odds', async (c) => {
+    const config = configOf()
+    const list = await store.list()
+    const slug = c.req.query('event') || config.events.find((event) => event.active)?.slug
+    const event = slug ? findEvent(config, slug) : null
+    const sold = event ? soldOutIds(list, event.slug, config) : []
+    return c.json({ event: event ? publicEvent(event) : null, soldOut: sold, odds: oddsTable(config, sold) })
+  })
+
+  app.get('/api/admin/outbox', async (c) => {
+    const records = await mailer.recent(50)
+    return c.json({
+      mode: mailer.mode,
+      records: records.map((record) => ({
+        id: record.id,
+        at: record.at,
+        to: record.to,
+        subject: record.subject,
+        status: record.status,
+        error: record.error || '',
+        text: record.text || ''
+      }))
+    })
+  })
+
+  app.post('/api/admin/entries/:id', async (c) => {
+    const id = c.req.param('id')
+    if (!isUuid(id)) throw new HttpError(404, 'Entry not found.')
+    const body = await c.req.json().catch(() => ({}))
+    const entry = await store.transaction((list) => reviewEntry(list, id, String(body.action || ''), new Date().toISOString()))
+    return c.json({ entry: (await freshLinks([entry], c, fileSecret))[0] })
+  })
+
+  app.get('/api/admin/qr/:slug', async (c) => {
+    const config = configOf()
+    const event = findEvent(config, c.req.param('slug'))
+    if (!event) throw new HttpError(404, 'Unknown event.')
+    const url = `${requestBaseUrl(c)}/e/${event.slug}`
+    const png = await QRCode.toBuffer(url, {
+      width: 720,
+      margin: 2,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#1B0F33', light: '#FFFFFF' }
+    })
+    c.header('Content-Type', 'image/png')
+    c.header('Content-Disposition', `inline; filename="spin-${event.slug}.png"`)
+    c.header('Cache-Control', 'private, no-store')
+    return c.body(png)
+  })
+
+  const htmlHeaders = { 'Cache-Control': 'no-cache' }
+  app.get('/', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
+  app.get('/e/:slug', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
+  app.get('/spin', (c) => c.html(readPage('spin.html'), 200, htmlHeaders))
+  app.get('/admin', (c) => c.html(readPage('admin.html'), 200, htmlHeaders))
+
+  app.use('/css/*', serveStatic({ root: publicDir }))
+  app.use('/js/*', serveStatic({ root: publicDir }))
+  app.use('/img/*', serveStatic({ root: publicDir }))
+  app.get('/wheel.svg', (c) => {
+    c.header('Content-Type', 'image/svg+xml; charset=utf-8')
+    c.header('Cache-Control', 'public, max-age=3600')
+    return c.body(fs.readFileSync(path.join(publicDir, 'wheel.svg')))
+  })
+
+  app.notFound((c) => {
+    if (c.req.path.startsWith('/api/')) return c.json({ error: 'Not found.' }, 404)
+    return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found · Sure-Win Spin</title>
+      <body style="font-family:'DM Sans',system-ui,sans-serif;background:#FFF8F1;color:#1B1714;display:grid;place-items:center;min-height:100vh;margin:0">
+      <div style="text-align:center;padding:24px"><h1>That page isn’t on the spin site.</h1><p><a href="/">Back to the form</a> · <a href="/spin">Big screen</a></p></div></body></html>`, 404)
+  })
+
+  return app
+}
+
+function remoteIp(c) {
+  if (process.env.TRUST_PROXY === '1') {
+    const forwarded = c.req.header('x-forwarded-for')
+    if (forwarded) return forwarded.split(',')[0].trim()
+  }
+  try {
+    return getConnInfo(c).remote.address || 'local'
+  } catch {
+    return 'local'
+  }
+}
+
+function isLoopback(ip) {
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+}
+
+function mayForcePrize(c) {
+  const ip = remoteIp(c)
+  if (ip === 'local') return true
+  return isLoopback(ip)
+}
+
+async function freshLinks(entries, c, secret) {
+  const base = requestBaseUrl(c)
+  return entries.map((entry) => {
+    if (!entry.proof_key) return entry
+    return { ...entry, proof_link: `${base}${proofPath(entry.proof_key, secret)}` }
+  })
+}
+
+async function sendProof(c, store, files, id) {
+  const list = await store.list()
+  const entry = list.find((row) => row.proof_key === id || row.id === id)
+  const file = await files.read(id)
+  if (!file) throw new HttpError(404, 'That file is no longer available.')
+  const filename = entry?.proof_filename || 'proof'
+  c.header('Content-Type', entry?.proof_mime || file.contentType || 'application/octet-stream')
+  c.header('Content-Disposition', `inline; filename="${filename.replace(/"/g, '')}"`)
+  c.header('X-Content-Type-Options', 'nosniff')
+  c.header('Cache-Control', 'private, max-age=300')
+  return c.body(file.buffer)
+}
+
+export function describeRuntime({ store, files, mailer }) {
+  const storage = store.mode === 'sheets'
+    ? `Google Sheet ${process.env.GOOGLE_SHEETS_ID}`
+    : `local spreadsheet ${path.resolve(process.env.DATA_DIR || './data', 'entries.csv')}`
+  const proofs = files.mode === 'r2' ? `R2 bucket ${process.env.R2_BUCKET}` : 'data/uploads on this computer'
+  const email = mailer.mode === 'resend' ? 'Resend' : 'not configured (saved to the admin outbox)'
+  return { storage, proofs, email }
+}

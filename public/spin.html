@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1B0F33">
+<meta name="robots" content="noindex">
+<title>Sure-Win Spin · Big screen</title>
+<link rel="icon" href="/img/rf-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body class="kiosk">
+<div class="kiosk-shell">
+  <header class="kiosk-top">
+    <span class="logo"><img src="/img/rf-logo.png" alt="Reno Fiesta"></span>
+    <div class="kiosk-event" id="eventLabel">Sure-Win Spin<small>Enter the code from the homeowner’s phone</small></div>
+    <div class="kiosk-tools">
+      <button class="tool" id="fullBtn" type="button">Fill the screen</button>
+      <button class="tool" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
+      <span class="top-help">Help · WhatsApp <a id="waLink" href="https://wa.me/6588949268" target="_blank" rel="noopener">8894 9268</a></span>
+    </div>
+  </header>
+  <div class="kiosk-main">
+    <section class="kiosk-panel" id="panel" aria-live="polite"></section>
+    <section class="kiosk-stage stage" id="stage">
+      <div class="wheel-box">
+        <div class="wheel-glow"></div>
+        <svg class="pointer" viewBox="0 0 54 64" aria-hidden="true"><path d="M27 62 L4 14 A25 25 0 1 1 50 14 Z" fill="#FFD23F" stroke="#fff" stroke-width="4" stroke-linejoin="round"></path><circle cx="27" cy="22" r="8" fill="#E90B01"></circle></svg>
+        <div class="wheel" id="wheel"></div>
+        <div class="lock" id="lock"><div><b>🔒</b>Enter a spin code to unlock</div></div>
+      </div>
+      <button class="spin-btn" id="spinBtn" type="button" disabled>Spin locked</button>
+      <div class="stage-note" id="stageNote">One spin per code. Every spin wins.</div>
+      <div class="prizes">
+        <figure><img src="/img/iphone-duo.webp" alt="iPhone Duo"><figcaption>iPhone Duo</figcaption></figure>
+        <figure><img src="/img/iphone-18-pro-max.webp" alt="iPhone 18 Pro Max"><figcaption>iPhone 18 Pro Max</figcaption></figure>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+  <div class="res">
+    <img class="res-otter" src="/img/otter-6.webp" alt="" aria-hidden="true">
+    <div class="won" id="resKicker">Congratulations</div>
+    <h3 id="resTitle">—</h3>
+    <span class="brand" id="resBrand"></span>
+    <p id="resBody"></p>
+    <div class="count" id="count"></div>
+    <div class="row-btns">
+      <button class="go" id="nextBtn" type="button">Next homeowner</button>
+    </div>
+  </div>
+</div>
+<script src="/js/wheel.js"></script>
+<script src="/js/kiosk.js"></script>
+</body>
+</html>

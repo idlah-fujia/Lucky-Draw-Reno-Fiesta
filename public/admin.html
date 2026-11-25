@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1B0F33">
+<title>Sure-Win Spin · Admin</title>
+<link rel="icon" href="/img/rf-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<div class="admin-wrap">
+  <header class="top">
+    <span class="logo"><img src="/img/rf-logo.png" alt="Reno Fiesta"></span>
+    <span class="top-help"><a href="/">Phone form</a> · <a href="/spin">Big screen</a></span>
+  </header>
+  <div id="loginView">
+    <form class="card login-card" id="loginForm">
+      <h2>Staff sign-in</h2>
+      <p class="sub">Entries, proof files, and the event QR codes.</p>
+      <div class="f">
+        <label class="fl"><span>Password</span><input id="password" type="password" autocomplete="current-password" required></label>
+        <div class="err" id="loginErr" role="alert"></div>
+        <button class="go" type="submit">Sign in</button>
+      </div>
+    </form>
+  </div>
+  <div id="appView" hidden>
+    <div class="admin-head">
+      <div>
+        <h1>Spin entries</h1>
+        <p class="sub" id="storeLine"></p>
+      </div>
+      <div class="tools">
+        <button class="mini" id="logoutBtn" type="button">Sign out</button>
+      </div>
+    </div>
+    <div class="banner" id="storeBanner"></div>
+    <div class="stats" id="stats"></div>
+    <div class="tools">
+      <input id="q" type="search" placeholder="Search name, mobile or code" aria-label="Search entries">
+      <select id="eventFilter" aria-label="Filter by event"></select>
+      <select id="statusFilter" aria-label="Filter by status">
+        <option value="">All statuses</option>
+        <option value="submitted">Submitted</option>
+        <option value="spun">Spun</option>
+        <option value="verified">Verified</option>
+        <option value="voided">Voided</option>
+      </select>
+      <a class="mini ok" id="csvLink" href="/api/admin/entries.csv">Download CSV</a>
+      <button class="mini" id="reloadBtn" type="button">Refresh</button>
+    </div>
+    <div class="table-scroll" style="margin-top:12px">
+      <table class="gridish" id="table">
+        <thead>
+          <tr>
+            <th>When (SGT)</th><th>Event</th><th>Homeowner</th><th>Code</th><th>Status</th><th>Prize</th><th>Proof</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="sub" id="empty" hidden style="margin-top:14px">No entries yet. When a homeowner submits the QR form, they show up here.</p>
+    <div class="split">
+      <section class="card">
+        <h2>Event QR codes</h2>
+        <p class="sub">Print one code per event and put it where homeowners can scan it. The link opens the phone form with that event already chosen.</p>
+        <div id="qrs"></div>
+      </section>
+      <section class="card">
+        <h2>Prize odds</h2>
+        <p class="sub">From <code>config/spin.config.json</code>. These are placeholders until the team sets the real weights. The iPhone can be won once per event.</p>
+        <label class="fl" style="margin-top:10px"><span>Show odds for</span><select id="oddsEvent"></select></label>
+        <table class="odds" id="odds"></table>
+      </section>
+    </div>
+    <section class="card" style="margin-top:16px">
+      <h2>Email outbox</h2>
+      <p class="sub" id="mailMode"></p>
+      <div class="outbox" id="outbox"></div>
+    </section>
+  </div>
+</div>
+<script src="/js/admin.js"></script>
+</body>
+</html>

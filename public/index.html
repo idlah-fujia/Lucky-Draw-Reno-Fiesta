@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1B0F33">
+<meta name="robots" content="noindex">
+<title>Sure-Win Spin · IDLah</title>
+<link rel="icon" href="/img/rf-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="logo"><img src="/img/rf-logo.png" alt="Reno Fiesta"></span>
+    <span class="top-help">Help? <a id="waLink" href="https://wa.me/6588949268" target="_blank" rel="noopener">WhatsApp us</a></span>
+  </header>
+  <section class="hero">
+    <span class="kick">🎡 Sure-Win Spin</span>
+    <h1>Signed with your dream ID? <em>Claim your spin code.</em></h1>
+    <p>Every homeowner who signs with an interior designer at our event gets one sure-win spin on the big screen. Top prize: iPhone Duo or iPhone 18 Pro Max.</p>
+    <div class="steps">
+      <span class="step on" id="st1"><i>1</i>Your details</span>
+      <span class="step" id="st2"><i>2</i>Your code</span>
+    </div>
+    <div class="notice">
+      <img class="notice-otter" src="/img/otter-2.webp" alt="" aria-hidden="true">
+      <div>
+        <div class="notice-h">Before you start, a quick check 👋</div>
+        <ul>
+          <li><b>This spin is only for homeowners who visited Reno Fiesta or HomeFest</b> and signed with an ID firm they met there, within 30 days of the event.</li>
+          <li><b>Every entry is checked and verified</b> against our internal records, including event check-ins and our partner ID firms.</li>
+          <li><b>Fill this in on your phone, then take the code to the big screen.</b> The wheel is there. Invalid entries are rejected without notification.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  <main class="grid">
+    <div class="card" id="formCard">
+      <h2>Step 1 · Prize redemption details</h2>
+      <p class="sub">Filled in by the homeowner. You’ll get a code for the big screen. One spin per homeowner.</p>
+      <form class="f" id="form" novalidate>
+        <div id="eventSlot"></div>
+        <input type="hidden" name="event_slug" id="eventSlug">
+        <label class="fl"><span>Date you attended</span><input name="event_date" id="eventDate" type="date" required></label>
+        <div class="ed" id="ed" aria-live="polite"></div>
+        <label class="fl"><span>Homeowner name</span><input name="homeowner_name" autocomplete="name" required></label>
+        <label class="fl"><span>Homeowner mobile</span><div class="ph"><b>+65</b><input name="homeowner_phone" id="homePhone" type="tel" inputmode="numeric" maxlength="8" autocomplete="tel" required></div></label>
+        <label class="fl"><span>Homeowner email <em class="hint">we send the spin code here</em></span><input name="homeowner_email" type="email" inputmode="email" autocomplete="email" required></label>
+        <label class="fl"><span>Prize delivery address <em class="hint">the final address the prize will be delivered to</em></span><textarea name="delivery_address" autocomplete="street-address" required></textarea></label>
+        <div>
+          <div class="qn">Proof of confirmation <em class="hint">down payment receipt or signed contract</em></div>
+          <label class="up" id="upBox"><input type="file" name="proof" id="proof" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" required><span class="up-ic">⬆</span><span class="up-t" id="upT"><b>Add file</b><small>1 photo or PDF · max 10 MB</small></span></label>
+        </div>
+        <div class="warn">
+          <div class="warn-h">Please read: we verify every entry</div>
+          <p>Every submission is checked against event check-ins, our partner ID firms and the documents provided. We treat false submissions seriously: made-up details, edited or doctored documents, and deals that weren’t concluded or have since been cancelled.</p>
+          <p>If we find an entry isn’t genuine, it is <b>voided without notice</b>. We may <b>recover any prize already delivered</b>, <b>suspend the ID firm or designer</b> from future IDLah events, and <b>refer suspected fraud to the authorities</b>.</p>
+        </div>
+        <div class="decl">
+          <div class="qn">Declarations</div>
+          <label class="consent"><input type="checkbox" name="decl_contract" value="yes" required><span>I confirm that I have <b>signed a contract with the interior design firm I met at this event</b>, and the deal is concluded and not cancelled.</span></label>
+          <label class="consent"><input type="checkbox" name="decl_genuine" value="yes" required><span>All details and documents here are <b>true, complete and unaltered</b>. I visited the event and met the firm there.</span></label>
+          <label class="consent"><input type="checkbox" name="decl_verify" value="yes" required><span>I agree that IDLah may <b>contact me and the interior design firm to verify</b> this entry, and that false entries may be voided and prizes recovered.</span></label>
+        </div>
+        <details class="tnc"><summary>Lucky Spin prize redemption: terms &amp; conditions</summary>
+          <p><b>Eligibility.</b> Lucky Spin prizes are awarded to homeowners who participated in the event and won through the Lucky Spin activity. Prizes are linked to the successful closing of a deal between the homeowner and the participating interior design company.</p>
+          <p><b>Prize fulfilment.</b> Prizes will be delivered to the interior designer within 2 weeks after the date of submitting this form. The interior designer will pass the prize to the homeowner only upon confirmation of a signed contract between the homeowner and the interior designer's company.</p>
+          <p><b>Proof of receipt.</b> A photo will be taken of the homeowner with the prize upon delivery. This photo serves as proof that the prize has been duly received by the homeowner.</p>
+          <p><b>Cancellations.</b> If the homeowner cancels the signed contract, the Lucky Spin prize must be returned to IDLah. The interior designer shall facilitate the return process.</p>
+          <p><b>Verification.</b> All entries are checked against IDLah's internal records, including event registrations, check-ins and partner ID firm records. IDLah may request further documents or contact the homeowner, designer and ID firm directly. Entries that cannot be verified within 14 days may be voided.</p>
+          <p><b>Top prize.</b> One iPhone (iPhone Duo or iPhone 18 Pro Max) is available per event edition. Once it has been won for an edition, it is removed from the wheel for that edition.</p>
+          <p><b>One spin per homeowner.</b> Each homeowner, household and signed contract is entitled to one spin only. Duplicate entries, including those made with different phone numbers, names or documents for the same household or contract, will be voided.</p>
+          <p><b>Timing.</b> The contract must be signed with an ID firm met at the event, within 30 days from the last day of that event. Submissions outside this window are not eligible.</p>
+          <p><b>False or invalid entries.</b> Entries with false, incomplete, altered or doctored information or documents, or linked to deals that were not concluded, were reversed or were cancelled, will be voided without notification. IDLah may recover any prize already delivered, suspend the ID firm or designer from future events, and refer suspected fraud to the relevant authorities.</p>
+          <p><b>Prize substitution.</b> Prizes are subject to availability. IDLah may substitute a prize with one of similar or greater value. Images are for illustration only.</p>
+          <p><b>Personal data.</b> Details and documents are collected only to verify eligibility and fulfil prizes, and are handled in line with Singapore's PDPA.</p>
+          <p><b>Liability.</b> IDLah is not responsible for the renovation works, contract terms or disputes between the homeowner and the ID firm. Warranties for prizes are provided by the respective manufacturers.</p>
+          <p><b>General.</b> Prizes are non-transferable and not exchangeable for cash or other products. IDLah reserves the right to amend these terms without prior notice. IDLah's decision on all matters relating to the Lucky Spin prizes is final and binding.</p>
+        </details>
+        <label class="consent"><input type="checkbox" name="tnc" value="yes" required><span>I have read and agree to the terms &amp; conditions above.</span></label>
+        <div class="err" id="err" role="alert"></div>
+        <button class="go" id="go" type="submit">Get my spin code →</button>
+        <div class="micro"><span><b>✓</b> Every spin wins</span><span><b>✓</b> 1 spin per homeowner</span><span><b>✓</b> Delivered in 2 weeks</span></div>
+      </form>
+    </div>
+    <div class="stage" id="stage">
+      <div class="wheel-box">
+        <div class="wheel-glow"></div>
+        <svg class="pointer" viewBox="0 0 54 64" aria-hidden="true"><path d="M27 62 L4 14 A25 25 0 1 1 50 14 Z" fill="#FFD23F" stroke="#fff" stroke-width="4" stroke-linejoin="round"></path><circle cx="27" cy="22" r="8" fill="#E90B01"></circle></svg>
+        <div class="wheel" id="wheel"></div>
+        <div class="lock" id="lock"><div><b>🎡</b>You’ll spin this on the big screen</div></div>
+      </div>
+      <div class="stage-note" id="stageNote">After you get a code, walk to the LED screen and type it in.</div>
+      <div class="prizes">
+        <figure><img src="/img/iphone-duo.webp" alt="iPhone Duo"><figcaption>iPhone Duo</figcaption></figure>
+        <figure><img src="/img/iphone-18-pro-max.webp" alt="iPhone 18 Pro Max"><figcaption>iPhone 18 Pro Max</figcaption></figure>
+      </div>
+    </div>
+  </main>
+</div>
+<footer>© 2026 IDLah Singapore. One spin per homeowner per event edition. Prizes are delivered to the interior designer within 2 weeks.</footer>
+<div class="sr" id="live" aria-live="polite"></div>
+<script src="/js/wheel.js"></script>
+<script src="/js/page1.js"></script>
+</body>
+</html>

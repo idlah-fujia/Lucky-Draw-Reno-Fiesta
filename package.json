@@ -1,0 +1,26 @@
+{
+  "name": "sure-win-spin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IDLah Sure-Win Spin: phone signup, kiosk wheel, Google Sheet of entries.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node src/config.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.940.0",
+    "@hono/node-server": "^1.19.6",
+    "dotenv": "^17.2.3",
+    "hono": "^4.10.7",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

@@ -1,0 +1,27 @@
+# Render Blueprint for the free web service.
+# The disk is ephemeral. Until Google Sheets is connected, entries are written
+# to data/entries.csv and proof files to data/uploads. Both disappear when
+# the free instance restarts or redeploys. That is fine for a trial.
+services:
+  - type: web
+    name: lucky-draw-reno-fiesta
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"
+      - key: ALLOW_FORCE_PRIZE
+        value: "0"
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: FILE_LINK_SECRET
+        generateValue: true
