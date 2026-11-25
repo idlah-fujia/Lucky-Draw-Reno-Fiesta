@@ -34,7 +34,7 @@ server.headersTimeout = 125_000
 const where = `http://${hostname === '0.0.0.0' ? '127.0.0.1' : hostname}:${port}`
 const runtime = describeRuntime({ store, files, mailer })
 console.log(`Sure-Win Spin is running at ${where}`)
-console.log(`Form: ${where}/   Big screen: ${where}/spin   Admin: ${where}/admin`)
+console.log(`On-site: ${where}/events   After event: ${where}/virtual   Admin: ${where}/admin`)
 console.log(`Entries: ${runtime.storage}`)
 console.log(`Proof files: ${runtime.proofs}`)
 console.log(`Email: ${runtime.email}`)

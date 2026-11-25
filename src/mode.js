@@ -12,6 +12,24 @@ export function eventMode(event, fallback = siteMode()) {
   return fallback === 'event_day' ? 'event_day' : 'after_event'
 }
 
+export function prefixFor(mode) {
+  return mode === 'after_event' ? '/virtual' : '/events'
+}
+
+export function modeFromPath(path = '') {
+  const value = String(path)
+  if (value === '/virtual' || value.startsWith('/virtual/')) return 'after_event'
+  if (value === '/events' || value.startsWith('/events/')) return 'event_day'
+  return ''
+}
+
+export function modeFromMount(value) {
+  const text = String(value || '').trim().toLowerCase()
+  if (text === 'virtual' || text === 'after_event') return 'after_event'
+  if (text === 'events' || text === 'event_day') return 'event_day'
+  return ''
+}
+
 export function defaultEvent(config) {
   if (!config?.events?.length) return null
   return config.events.find((event) => event.active) || config.events[0]

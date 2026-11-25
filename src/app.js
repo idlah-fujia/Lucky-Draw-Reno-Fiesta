@@ -8,7 +8,7 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import QRCode from 'qrcode'
 import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
 import { findEvent, getConfig, publicEvent } from './config.js'
-import { defaultEvent, eventMode, siteMode } from './mode.js'
+import { defaultEvent, eventMode, modeFromMount, modeFromPath, prefixFor, siteMode } from './mode.js'
 import { assertEventDate, mergeEvents, slugifyEventName, uniqueSlug } from './events.js'
 import { formatCode, generateCode, parseCode } from './codes.js'
 import { proofPath, validProofSig } from './sign.js'
@@ -19,11 +19,11 @@ import { codeEmail, resultEmails } from './email.js'
 import { adminCookieHeader, readSession, sessionToken } from './auth.js'
 import { assertUserChange, hashPassword, normalizeEmail, publicUser, verifyPassword } from './users.js'
 import { toCsv, versionLabel } from './schema.js'
+import { versionRoots } from './hosts.js'
 import { GLOBAL_EVENT, QR_LIMITS, clampSize, envKioskQr, normalizeSaved, parsePosition, resolveKioskQr } from './kioskQr.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
-const ADMIN_SITE = 'https://lucky-draw-reno-fiesta.onrender.com'
 const CREATE_EVENT_LABEL = 'Create Event'
 
 function readPage(name) {
@@ -34,7 +34,24 @@ export function createApp(deps) {
   const { store, files, mailer, adminPassword, fileSecret, allowForcePrize = false } = deps
   const configOf = deps.getConfig || getConfig
   const fallbackMode = () => deps.siteMode || siteMode()
-  const asPublic = (event) => publicEvent(event, fallbackMode())
+  const asPublic = (event, fallback) => publicEvent(event, fallback || fallbackMode())
+  function hintedMode(c, hint) {
+    return modeFromPath(c.req.path) || modeFromMount(hint) || modeFromMount(c.req.query('mount')) || fallbackMode()
+  }
+  function linkFor(c, mode, slug, kind, code) {
+    const root = `${requestBaseUrl(c)}${prefixFor(mode)}`
+    if (kind === 'form') return `${root}/e/${encodeURIComponent(slug)}`
+    const spin = `${root}/spin?event=${encodeURIComponent(slug)}`
+    return code ? `${spin}&code=${encodeURIComponent(code)}` : spin
+  }
+  function eventLinks(c, event, hint) {
+    const mode = eventMode(event, hintedMode(c, hint))
+    return {
+      mode,
+      formUrl: linkFor(c, mode, event.slug, 'form'),
+      spinUrl: linkFor(c, mode, event.slug, 'spin')
+    }
+  }
   async function liveConfig() {
     const base = configOf()
     const merged = mergeEvents(base.events, await store.listEvents(), await store.readLiveSlug())
@@ -64,16 +81,6 @@ export function createApp(deps) {
     files: files.mode
   }))
 
-  app.use('*', async (c, next) => {
-    if (fallbackMode() !== 'event_day') return next()
-    const pathName = c.req.path
-    if (pathName !== '/admin' && !pathName.startsWith('/api/admin/')) return next()
-    const home = String(process.env.ADMIN_SITE_URL || ADMIN_SITE).replace(/\/$/, '')
-    if (requestBaseUrl(c).replace(/\/$/, '') === home) return next()
-    const query = new URL(c.req.url).search
-    return c.redirect(`${home}${pathName}${query}`, 302)
-  })
-
   app.get('/api/bootstrap', async (c) => {
     const config = await liveConfig()
     return c.json({
@@ -94,7 +101,7 @@ export function createApp(deps) {
     const qr = resolveKioskQr(await store.readKioskQr(), event.slug)
     return c.json({
       event: asPublic(event),
-      formUrl: formUrlFor(c, event.slug),
+      formUrl: eventLinks(c, event).formUrl,
       qr
     })
   })
@@ -102,7 +109,7 @@ export function createApp(deps) {
   app.get('/api/kiosk/qr.png', async (c) => {
     const config = await liveConfig()
     const event = eventForScreen(config, c.req.query('event'))
-    return qrPng(c, formUrlFor(c, event.slug), `register-${event.slug}.png`)
+    return qrPng(c, eventLinks(c, event).formUrl, `register-${event.slug}.png`)
   })
 
   app.get('/api/events/:slug', async (c) => {
@@ -200,7 +207,7 @@ export function createApp(deps) {
           updated_at: nowIso,
           verified_by: '',
           voided_by: '',
-          site_mode: fallbackMode(),
+          site_mode: eventMode(event, hintedMode(c, body.mount)),
           spam_at: '',
           spam_by: ''
         }
@@ -211,10 +218,8 @@ export function createApp(deps) {
       throw error
     }
 
-    const mode = eventMode(event, fallbackMode())
-    const spinUrl = mode === 'after_event'
-      ? `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(event.slug)}&code=${encodeURIComponent(entry.code)}`
-      : `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(event.slug)}`
+    const mode = eventMode(event, hintedMode(c, body.mount))
+    const spinUrl = linkFor(c, mode, event.slug, 'spin', mode === 'after_event' ? entry.code : '')
     const mailed = await mailer.send(codeEmail({ entry, spinUrl, whatsapp: config.whatsapp, mode }))
     await store.transaction((list) => {
       const row = list.find((item) => item.id === entry.id)
@@ -302,7 +307,7 @@ export function createApp(deps) {
 
     let emailStatus = outcome.entry.result_email_status || ''
     if (!outcome.already) {
-      const spinUrl = `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(outcome.entry.event_slug)}`
+      const spinUrl = linkFor(c, outcome.entry.site_mode || hintedMode(c), outcome.entry.event_slug, 'spin')
       const messages = resultEmails({ entry: outcome.entry, spinUrl, whatsapp: config.whatsapp })
       const results = []
       for (const message of messages) results.push(await mailer.send(message))
@@ -473,6 +478,7 @@ export function createApp(deps) {
       entries: list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
       events: config.events.map(asPublic),
       liveSlug: config.liveSlug || '',
+      hosts: versionRoots(requestBaseUrl(c)),
       storage: store.mode
     })
   })
@@ -589,9 +595,11 @@ export function createApp(deps) {
       events.push(created)
     })
     return c.json({
-      event: asPublic(created),
-      formUrl: formUrlFor(c, slug),
-      spinUrl: `${requestBaseUrl(c)}/spin?event=${encodeURIComponent(slug)}`,
+      event: asPublic(created, 'event_day'),
+      formUrl: linkFor(c, 'event_day', slug, 'form'),
+      spinUrl: linkFor(c, 'event_day', slug, 'spin'),
+      virtualFormUrl: linkFor(c, 'after_event', slug, 'form'),
+      virtualSpinUrl: linkFor(c, 'after_event', slug, 'spin'),
       label: CREATE_EVENT_LABEL
     })
   })
@@ -611,22 +619,41 @@ export function createApp(deps) {
     const config = await liveConfig()
     const event = findEvent(config, c.req.param('slug'))
     if (!event) throw new HttpError(404, 'Unknown event.')
-    return qrPng(c, formUrlFor(c, event.slug), `spin-${event.slug}.png`, { dark: '#1B0F33', light: '#FFFFFF' })
+    const pinned = event.mode ? eventMode(event) : modeFromMount(c.req.query('mount')) || 'event_day'
+    return qrPng(c, linkFor(c, eventMode(event, pinned), event.slug, 'form'), `spin-${event.slug}.png`, { dark: '#1B0F33', light: '#FFFFFF' })
   })
 
   const htmlHeaders = { 'Cache-Control': 'no-cache' }
-  app.get('/', async (c) => {
+  const showForm = (c) => c.html(readPage('index.html'), 200, htmlHeaders)
+  const showSpin = (c) => c.html(readPage('spin.html'), 200, htmlHeaders)
+  app.get('/', (c) => c.redirect('/events', 302))
+  app.get('/events', async (c) => {
     const event = pickLive(await liveConfig())
-    if (!event) return c.html(readPage('index.html'), 200, htmlHeaders)
-    if (fallbackMode() === 'event_day') {
-      return c.redirect(`/spin?event=${encodeURIComponent(event.slug)}`, 302)
-    }
-    return c.redirect(`/e/${encodeURIComponent(event.slug)}`, 302)
+    if (!event) return showForm(c)
+    return c.redirect(`/events/spin?event=${encodeURIComponent(event.slug)}`, 302)
   })
-  app.get('/register', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
-  app.get('/e/:slug', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
-  app.get('/after/:slug', (c) => c.html(readPage('index.html'), 200, htmlHeaders))
-  app.get('/spin', (c) => c.html(readPage('spin.html'), 200, htmlHeaders))
+  app.get('/virtual', async (c) => {
+    const event = pickLive(await liveConfig())
+    if (!event) return showForm(c)
+    return c.redirect(`/virtual/e/${encodeURIComponent(event.slug)}`, 302)
+  })
+  app.get('/events/spin', showSpin)
+  app.get('/events/register', showForm)
+  app.get('/events/e/:slug', showForm)
+  app.get('/events/after/:slug', showForm)
+  app.get('/virtual/spin', showSpin)
+  app.get('/virtual/register', showForm)
+  app.get('/virtual/e/:slug', showForm)
+  app.get('/virtual/after/:slug', showForm)
+  app.get('/register', (c) => c.redirect(`${prefixFor(fallbackMode())}/register`, 302))
+  app.get('/spin', (c) => c.redirect(`/events/spin${new URL(c.req.url).search}`, 302))
+  app.get('/e/:slug', async (c) => {
+    const config = await liveConfig()
+    const event = findEvent(config, c.req.param('slug'))
+    const mode = eventMode(event, fallbackMode())
+    return c.redirect(`${prefixFor(mode)}/e/${encodeURIComponent(c.req.param('slug'))}`, 302)
+  })
+  app.get('/after/:slug', (c) => c.redirect(`/virtual/e/${encodeURIComponent(c.req.param('slug'))}`, 302))
   app.get('/admin', (c) => c.html(readPage('admin.html'), 200, htmlHeaders))
 
   app.use('/css/*', serveStatic({ root: publicDir }))
@@ -674,9 +701,6 @@ function pickLive(config) {
   return defaultEvent(config)
 }
 
-function formUrlFor(c, slug) {
-  return `${requestBaseUrl(c)}/e/${encodeURIComponent(slug)}`
-}
 
 async function qrPng(c, url, filename, color = { dark: '#000000', light: '#FFFFFF' }) {
   const png = await QRCode.toBuffer(url, {

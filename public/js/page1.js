@@ -188,6 +188,7 @@
     var button = document.getElementById('go');
     button.disabled = true;
     button.textContent = 'Saving your entry…';
+    data.append('mount', location.pathname.indexOf('/virtual') === 0 ? 'virtual' : 'events')
     fetch('/api/entries', { method: 'POST', body: data, signal: AbortSignal.timeout(60000) })
       .then(function (res) {
         return res.json().catch(function () { return { error: 'Something went wrong.' }; }).then(function (json) {
@@ -210,7 +211,7 @@
       ? 'We also emailed it to <b>' + esc(result.email) + '</b>.'
       : 'Email isn’t sending from this server yet, so the screenshot is what counts. Staff can look the code up if you lose it.';
     var after = result.mode === 'after_event' || (result.event && result.event.mode === 'after_event');
-    var spinHref = '/spin?event=' + encodeURIComponent((result.event && result.event.slug) || '') + '&code=' + encodeURIComponent(result.code);
+    var spinHref = result.spinUrl || ((after ? '/virtual' : '/events') + '/spin?event=' + encodeURIComponent((result.event && result.event.slug) || '') + '&code=' + encodeURIComponent(result.code));
     document.getElementById('formCard').innerHTML =
       '<div class="done-card">' +
       '<img class="done-otter" src="/img/otter-6.webp" alt="">' +

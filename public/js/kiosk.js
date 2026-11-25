@@ -332,14 +332,15 @@
     host.style.setProperty('--qr-size', qrSize);
     var column = document.querySelector('.led-column');
     if (column) column.style.setProperty('--qr-size', qrSize);
-    var src = '/api/kiosk/qr.png?event=' + encodeURIComponent(data.event.slug);
+    var src = '/api/kiosk/qr.png?event=' + encodeURIComponent(data.event.slug) + '&mount=' + (location.pathname.indexOf('/virtual') === 0 ? 'virtual' : 'events');
     if (img.getAttribute('src') !== src) img.src = src;
     img.alt = 'QR code to register for ' + (data.event.name || 'this event');
     if (caption) caption.textContent = 'Scan to register for your spin';
   }
 
   function loadKioskQr() {
-    var query = screenEvent ? ('?event=' + encodeURIComponent(screenEvent)) : '';
+    var mount = location.pathname.indexOf('/virtual') === 0 ? 'virtual' : 'events';
+    var query = '?mount=' + mount + (screenEvent ? '&event=' + encodeURIComponent(screenEvent) : '');
     return fetch('/api/kiosk/display' + query, { cache: 'no-store' }).then(function (res) {
       return res.json().then(function (data) {
         if (!res.ok) throw new Error(data.error || 'Registration QR is not ready.');

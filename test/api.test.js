@@ -342,8 +342,8 @@ test('the phone form lists events, and the server keeps the date inside that eve
   const { app } = await build()
   const home = await app.request('/', { redirect: 'manual' })
   assert.equal(home.status, 302)
-  assert.match(home.headers.get('location') || '', /\/e\/reno-fiesta-nov-2026$/)
-  const form = await app.request('/e/reno-fiesta-nov-2026')
+  assert.equal(home.headers.get('location'), '/events')
+  const form = await app.request('/events/e/reno-fiesta-nov-2026')
   const html = await form.text()
   assert.equal(form.status, 200)
   assert.match(html, /id="eventSlot"/)
@@ -354,7 +354,7 @@ test('the phone form lists events, and the server keeps the date inside that eve
   assert.doesNotMatch(html, /within 2 weeks|within 14 days|Delivered in 2 weeks/i)
   assert.match(html, /within 30 days/)
   assert.doesNotMatch(html, /type="date"/)
-  const register = await app.request('/register')
+  const register = await app.request('/events/register')
   assert.equal(register.status, 200)
   assert.match(await register.text(), /id="eventSlot"/)
 
@@ -382,13 +382,15 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
   const display = await json(await app.request('/api/kiosk/display?event=reno-fiesta-nov-2026', { headers }))
   assert.equal(display.status, 200)
   assert.equal(display.body.event.slug, 'reno-fiesta-nov-2026')
-  assert.equal(display.body.formUrl, `${base}/e/reno-fiesta-nov-2026`)
+  assert.equal(display.body.formUrl, `${base}/virtual/e/reno-fiesta-nov-2026`)
   assert.equal(display.body.qr.size, fallback.size)
   assert.equal(display.body.qr.position, fallback.position)
 
   const bare = await json(await app.request('/api/kiosk/display', { headers }))
   assert.equal(bare.body.event.slug, 'reno-fiesta-nov-2026')
-  assert.equal(bare.body.formUrl, `${base}/e/reno-fiesta-nov-2026`)
+  assert.equal(bare.body.formUrl, `${base}/virtual/e/reno-fiesta-nov-2026`)
+  const onSite = await json(await app.request('/api/kiosk/display?event=reno-fiesta-nov-2026&mount=events', { headers }))
+  assert.equal(onSite.body.formUrl, `${base}/events/e/reno-fiesta-nov-2026`)
 
   const png = await app.request('/api/kiosk/qr.png?event=reno-fiesta-nov-2026', { headers })
   assert.equal(png.status, 200)
@@ -440,42 +442,47 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
   const still = await json(await app.request('/api/kiosk/display?event=closed-fest'))
   assert.equal(still.body.qr.position, 'top-left')
 
-  const page = await app.request('/spin?event=reno-fiesta-nov-2026')
+  const page = await app.request('/events/spin?event=reno-fiesta-nov-2026')
   const spinHtml = await page.text()
   assert.match(spinHtml, /id="kioskQr"/)
   assert.match(spinHtml, /Scan to register for your spin/)
   assert.match(spinHtml, />Close</)
 })
 
-test('SITE_MODE picks the home page, and only after-event codes open the phone wheel', async () => {
-  const day = await build({ siteMode: 'event_day' })
-  const led = await day.app.request('/', { redirect: 'manual' })
+test('the path picks the version, and only after-event codes open the phone wheel', async () => {
+  const { app } = await build()
+  const root = await app.request('/', { redirect: 'manual' })
+  assert.equal(root.headers.get('location'), '/events')
+  const led = await app.request('/events', { redirect: 'manual' })
   assert.equal(led.status, 302)
-  assert.match(led.headers.get('location') || '', /\/spin\?event=reno-fiesta-nov-2026$/)
-
-  const later = await build({ siteMode: 'after_event' })
-  const phone = await later.app.request('/', { redirect: 'manual' })
+  assert.match(led.headers.get('location') || '', /\/events\/spin\?event=reno-fiesta-nov-2026$/)
+  const phone = await app.request('/virtual', { redirect: 'manual' })
   assert.equal(phone.status, 302)
-  assert.match(phone.headers.get('location') || '', /\/e\/reno-fiesta-nov-2026$/)
-  const afterPage = await later.app.request('/after/reno-fiesta-nov-2026')
+  assert.match(phone.headers.get('location') || '', /\/virtual\/e\/reno-fiesta-nov-2026$/)
+  const oldSpin = await app.request('/spin?event=reno-fiesta-nov-2026', { redirect: 'manual' })
+  assert.equal(oldSpin.status, 302)
+  assert.match(oldSpin.headers.get('location') || '', /\/events\/spin\?event=reno-fiesta-nov-2026$/)
+  const afterPage = await app.request('/virtual/e/reno-fiesta-nov-2026')
   assert.equal(afterPage.status, 200)
   assert.match(await afterPage.text(), /id="eventSlot"/)
 
-  const created = await json(await later.app.request('/api/entries', {
+  const created = await json(await app.request('/api/entries', {
     method: 'POST',
-    body: entryForm({ homeowner_phone: '81231111', homeowner_email: 'after@example.com' })
+    body: entryForm({ homeowner_phone: '81231111', homeowner_email: 'after@example.com', mount: 'virtual' })
   }))
   assert.equal(created.status, 200, created.body.error)
   assert.equal(created.body.mode, 'after_event')
+  assert.match(created.body.spinUrl, /\/virtual\/spin\?/)
   assert.match(created.body.spinUrl, /[?&]code=/)
   assert.match(created.body.event.mode, /after_event/)
 
-  const dayEntry = await json(await day.app.request('/api/entries', {
+  const dayEntry = await json(await app.request('/api/entries', {
     method: 'POST',
-    body: entryForm({ homeowner_phone: '81230001', homeowner_email: 'day@example.com' })
+    body: entryForm({ homeowner_phone: '81230001', homeowner_email: 'day@example.com', mount: 'events' })
   }))
   assert.equal(dayEntry.status, 200, dayEntry.body.error)
   assert.equal(dayEntry.body.mode, 'event_day')
+  assert.match(dayEntry.body.spinUrl, /\/events\/spin\?/)
   assert.doesNotMatch(dayEntry.body.spinUrl, /code=/)
 
   const configured = getConfig().events.find((event) => event.slug === 'reno-fiesta-nov-2026-after')
@@ -583,18 +590,10 @@ test('the prize pop-up stays for two minutes and counts down as m:ss', async () 
   assert.equal(`Closing in ${closingClock(0)}`, 'Closing in 0:00')
 })
 
-test('the on-site admin page redirects to the shared admin, and a created event can be set live', async () => {
-  const day = await build({ siteMode: 'event_day' })
-  const adminPage = await day.app.request('/admin', {
-    redirect: 'manual',
-    headers: { host: 'events-luckydrawrenofiesta.onrender.com', 'x-forwarded-proto': 'https' }
-  })
-  assert.equal(adminPage.status, 302)
-  assert.equal(adminPage.headers.get('location'), 'https://lucky-draw-reno-fiesta.onrender.com/admin')
-  const spin = await day.app.request('/spin')
-  assert.equal(spin.status, 200)
-
+test('admin stays on /admin, and a created event can be set live', async () => {
   const { app } = await build()
+  const adminPage = await app.request('/admin')
+  assert.equal(adminPage.status, 200)
   const login = await app.request('/api/admin/login', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
@@ -609,8 +608,10 @@ test('the on-site admin page redirects to the shared admin, and a created event 
   assert.equal(created.body.event.slug, 'harbour-fest')
   assert.equal(created.body.event.starts, '2026-12-01')
   assert.equal(created.body.event.ends, '2026-12-01')
-  assert.match(created.body.formUrl, /\/e\/harbour-fest$/)
-  assert.match(created.body.spinUrl, /\/spin\?event=harbour-fest$/)
+  assert.match(created.body.formUrl, /\/events\/e\/harbour-fest$/)
+  assert.match(created.body.spinUrl, /\/events\/spin\?event=harbour-fest$/)
+  assert.match(created.body.virtualFormUrl, /\/virtual\/e\/harbour-fest$/)
+  assert.match(created.body.virtualSpinUrl, /\/virtual\/spin\?event=harbour-fest$/)
   const boot = await json(await app.request('/api/bootstrap'))
   assert.ok(boot.body.events.some((event) => event.slug === 'harbour-fest'))
   const madeLive = await json(await app.request('/api/admin/live', {
@@ -621,7 +622,18 @@ test('the on-site admin page redirects to the shared admin, and a created event 
   assert.equal(madeLive.status, 200)
   const home = await app.request('/', { redirect: 'manual' })
   assert.equal(home.status, 302)
-  assert.match(home.headers.get('location') || '', /\/e\/harbour-fest$/)
+  assert.equal(home.headers.get('location'), '/events')
+  const onSite = await app.request('/events', { redirect: 'manual' })
+  assert.match(onSite.headers.get('location') || '', /\/events\/spin\?event=harbour-fest$/)
+  const virtual = await app.request('/virtual', { redirect: 'manual' })
+  assert.match(virtual.headers.get('location') || '', /\/virtual\/e\/harbour-fest$/)
+  const previousBase = process.env.PUBLIC_BASE_URL
+  process.env.PUBLIC_BASE_URL = 'https://luckydraw-renofiesta.onrender.com'
+  const labelled = await json(await app.request('/api/admin/entries', { headers: { cookie } }))
+  if (previousBase === undefined) delete process.env.PUBLIC_BASE_URL
+  else process.env.PUBLIC_BASE_URL = previousBase
+  assert.equal(labelled.body.hosts.event_day, 'https://luckydraw-renofiesta.onrender.com/events')
+  assert.equal(labelled.body.hosts.after_event, 'https://luckydraw-renofiesta.onrender.com/virtual')
   const screen = await json(await app.request('/api/kiosk/display'))
   assert.equal(screen.body.event.slug, 'harbour-fest')
   const html = await app.request('/admin')

@@ -96,8 +96,10 @@
       box.innerHTML = '<div class="event-qr"><img alt="QR for ' + esc(created.event.name) + '" src="/api/admin/qr/' + encodeURIComponent(created.event.slug) + '">' +
         '<div><b>' + esc(created.event.name) + '</b>' +
         '<p class="sub">Created. The QR is centred and uses the usual size.</p>' +
-        '<p><a href="' + esc(created.spinUrl) + '">Big screen</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(created.formUrl) + '</p></div></div>';
+        '<p><a href="' + esc(created.spinUrl) + '">' + esc(versionLabel('event_day')) + ' big screen</a></p>' +
+        '<p style="font-weight:800;word-break:break-all">' + esc(created.formUrl) + '</p>' +
+        '<p><a href="' + esc(created.virtualSpinUrl) + '">' + esc(versionLabel('after_event')) + ' big screen</a></p>' +
+        '<p style="font-weight:800;word-break:break-all">' + esc(created.virtualFormUrl) + '</p></div></div>';
       return load();
     }).catch(function (error) { err.textContent = error.message; });
   });
@@ -173,6 +175,7 @@
       state.entries = parts[0].entries;
       state.events = parts[0].events;
       state.liveSlug = parts[0].liveSlug || '';
+      state.hosts = parts[0].hosts || state.hosts;
       fillFilters();
       banner();
       applyRole();
@@ -264,12 +267,28 @@
     }).join('');
     eventFilter.value = current;
     if (oddsCurrent) odds.value = oddsCurrent;
+    var version = document.getElementById('versionFilter');
+    var versionCurrent = version.value;
+    version.innerHTML = '<option value="">All versions</option>' +
+      '<option value="event_day">' + esc(versionLabel('event_day')) + '</option>' +
+      '<option value="after_event">' + esc(versionLabel('after_event')) + '</option>';
+    version.value = versionCurrent;
   }
 
+  function hostFor(mode) {
+    var hosts = state.hosts || { event_day: '/events', after_event: '/virtual' };
+    if (mode === 'event_day') return hosts.event_day;
+    if (mode === 'after_event') return hosts.after_event;
+    return '';
+  }
   function versionLabel(mode) {
-    if (mode === 'event_day') return 'On-site';
-    if (mode === 'after_event') return 'After event';
-    return '—';
+    var base = hostFor(mode);
+    if (!base) return '—';
+    try { return new URL(base).host; } catch (e) { return base; }
+  }
+  function versionLink(mode, path) {
+    var base = hostFor(mode);
+    return base ? base.replace(/\/$/, '') + path : path;
   }
 
   function filtered() {
@@ -339,7 +358,7 @@
       if (admin && row.status === 'spam') actions += '<button class="mini" data-act="undo-spam" data-id="' + row.id + '">Undo spam</button>';
       return '<tr>' +
         '<td>' + esc(when(row.created_at)) + '</td>' +
-        '<td data-testid="row-version">' + esc(versionLabel(row.site_mode)) + '</td>' +
+        '<td data-testid="row-version">' + (hostFor(row.site_mode) ? '<a href="' + esc(hostFor(row.site_mode)) + '">' + esc(versionLabel(row.site_mode)) + '</a>' : '—') + '</td>' +
         '<td>' + esc(row.event_name) + '</td>' +
         '<td><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
         '<td data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
@@ -357,7 +376,7 @@
     return '<b>Designer.</b> ' + esc(row.designer_name || '—') + ' · ' + esc(row.designer_phone || '') + ' · ' + esc(row.designer_email || '') +
       ' · ' + esc(row.id_company || '') +
       '<br><b>Prize delivery address.</b> ' + esc(row.delivery_address) +
-      '<br><b>Attended.</b> ' + esc(row.event_date) +
+      '<br><b>Event date.</b> ' + esc(row.event_date) +
       ' · <b>Code email.</b> ' + esc(row.code_email_status || '—') +
       ' · <b>Result email.</b> ' + esc(row.result_email_status || '—') +
       '<br><b>Created.</b> ' + esc(when(row.created_at)) +
@@ -394,14 +413,16 @@
     var admin = state.session && state.session.role === 'admin';
     host.innerHTML = state.events.map(function (event) {
       var live = event.slug === state.liveSlug;
-      var spin = location.origin + '/spin?event=' + encodeURIComponent(event.slug);
-      var form = location.origin + '/e/' + encodeURIComponent(event.slug);
+      var origin = versionLink(event.mode, '');
+      var spin = versionLink(event.mode, '/spin?event=' + encodeURIComponent(event.slug));
+      var form = versionLink(event.mode, '/e/' + encodeURIComponent(event.slug));
       var control = live
         ? '<span class="event-live" data-testid="live-event">Live</span>'
         : (admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '');
       return '<div class="event-qr" data-testid="event-qr-row"><img alt="QR for ' + esc(event.name) + '" src="/api/admin/qr/' + encodeURIComponent(event.slug) + '">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b> ' + control +
-        '<p class="sub">' + esc(event.starts || '') + (event.ends && event.ends !== event.starts ? ' to ' + esc(event.ends) : '') + '</p>' +
+        '<p class="sub"><a href="' + esc(origin) + '">' + esc(versionLabel(event.mode)) + '</a>' +
+          (event.starts ? ' · ' + esc(event.starts) + (event.ends && event.ends !== event.starts ? ' to ' + esc(event.ends) : '') : '') + '</p>' +
         '<p><a href="' + esc(spin) + '">Big screen</a> · <a href="' + esc(form) + '">Phone form</a></p>' +
         '<p style="font-weight:800;word-break:break-all">' + esc(form) + '</p></div></div>';
     }).join('');
@@ -421,10 +442,10 @@
   function renderQrs() {
     var host = document.getElementById('qrs');
     host.innerHTML = state.events.map(function (event) {
-      var url = location.origin + '/e/' + event.slug;
+      var url = versionLink(event.mode, '/e/' + encodeURIComponent(event.slug));
       return '<div class="qr-card"><img alt="QR for ' + esc(event.name) + '" src="/api/admin/qr/' + encodeURIComponent(event.slug) + '">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b>' +
-        '<p class="sub">' + (event.mode === 'after_event' ? 'After the event' : 'Event day') + ' · ' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
+        '<p class="sub"><a href="' + esc(versionLink(event.mode, '')) + '">' + esc(versionLabel(event.mode)) + '</a> · ' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
         '<p style="font-weight:800;word-break:break-all">' + esc(url) + '</p>' +
         '<p><a href="/api/admin/qr/' + encodeURIComponent(event.slug) + '" download="spin-' + esc(event.slug) + '.png">Download PNG</a></p></div></div>';
     }).join('');

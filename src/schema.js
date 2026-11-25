@@ -1,3 +1,5 @@
+import { versionLabel as versionAddress } from './hosts.js'
+
 /** Columns written to the Google Sheet and to data/entries.csv. One row per entry. */
 export const COLUMNS = [
   'id',
@@ -43,10 +45,9 @@ export const COLUMNS = [
   'spam_by'
 ]
 
-export function versionLabel(siteMode) {
-  if (siteMode === 'event_day') return 'On-site'
-  if (siteMode === 'after_event') return 'After event'
-  return siteMode ? String(siteMode) : ''
+export function versionLabel(siteMode, env = process.env) {
+  const base = env.PUBLIC_BASE_URL || env.RENDER_EXTERNAL_URL || ''
+  return versionAddress(siteMode, base) || (siteMode ? String(siteMode) : '')
 }
 
 export function emptyEntry() {
