@@ -41,7 +41,6 @@
       hidden.value = pick.value;
       var event = events.find(function (item) { return item.slug === pick.value; });
       renderDate(event || null);
-      refreshSold(pick.value);
     });
   }
 
@@ -88,13 +87,6 @@
       return;
     }
     slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" disabled><option value="">No dates on this event</option></select><div class="ed" id="ed">This event has no dates in the config.</div></label>';
-  }
-
-  function refreshSold(slug) {
-    if (!slug || !window.SureWinWheel) return;
-    fetch('/api/events/' + encodeURIComponent(slug)).then(function (res) { return res.json(); }).then(function (data) {
-      if (boot) SureWinWheel.markSold(document.getElementById('wheel'), boot.slots, data.soldOut || []);
-    }).catch(function () {});
   }
 
   document.getElementById('homePhone').addEventListener('input', function () {
@@ -229,8 +221,6 @@
       '<a class="btn-wa" id="codeWa" target="_blank" rel="noopener">WhatsApp us</a></div>' +
       '<p class="sub" style="margin-top:12px">The code works once.</p>' +
       '</div>';
-    document.getElementById('lock').innerHTML = '<div><b>🎟️</b>See you at the big screen</div>';
-    document.getElementById('stageNote').textContent = 'Code ' + result.codeDisplay + ' · one spin on the LED screen.';
     document.getElementById('live').textContent = 'Your spin code is ' + result.codeDisplay;
     var wa = 'https://wa.me/' + (boot && boot.whatsapp ? boot.whatsapp : '6588949268') + '?text=' +
       encodeURIComponent('Hi IDLah, I need help with my Sure-Win Spin code ' + result.codeDisplay + '.');
@@ -248,11 +238,8 @@
     document.getElementById('formCard').innerHTML = '<h2>This link can’t be used</h2><p class="sub">' + esc(message) + '</p><p class="sub" style="margin-top:10px">Ask the IDLah booth, or <a id="waLink2" href="https://wa.me/6588949268">WhatsApp us</a>.</p>';
   }
 
-  Promise.all([
-    fetch('/api/bootstrap').then(function (res) { return res.json(); }),
-    SureWinWheel.mount(document.getElementById('wheel'))
-  ]).then(function (parts) {
-    boot = parts[0];
+  fetch('/api/bootstrap').then(function (res) { return res.json(); }).then(function (data) {
+    boot = data;
     if (boot.whatsapp) document.getElementById('waLink').href = 'https://wa.me/' + boot.whatsapp;
     var slug = slugFromLocation();
     if (!boot.events.length) return showBlocked('No event is open for spins right now.');
@@ -268,7 +255,6 @@
     }).then(function (data) {
       if (!data.event.active) return showBlocked(eventLabel(data.event) + ' is not open for new entries.');
       renderEvent(boot.events, data.event.slug);
-      SureWinWheel.markSold(document.getElementById('wheel'), boot.slots, data.soldOut || []);
     });
   }).catch(function (error) {
     showBlocked(error.message || 'The form could not load. Check the connection and refresh.');
