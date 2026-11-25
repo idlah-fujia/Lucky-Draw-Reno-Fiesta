@@ -345,6 +345,8 @@ test('the phone form lists events, and the server keeps the date inside that eve
   assert.match(html, /data-testid="step-designer"/)
   assert.match(html, /Submit &amp; get my spin code/)
   assert.doesNotMatch(html, /Filled in by the homeowner/i)
+  assert.doesNotMatch(html, /within 2 weeks|within 14 days|Delivered in 2 weeks/i)
+  assert.match(html, /within 30 days/)
   assert.doesNotMatch(html, /type="date"/)
   const register = await app.request('/register')
   assert.equal(register.status, 200)
