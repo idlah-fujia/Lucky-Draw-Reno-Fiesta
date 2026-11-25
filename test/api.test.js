@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import vm from 'node:vm'
 import { createApp } from '../src/app.js'
+import { eventFromCells, eventNeedsDateBackfill, eventSheetColumns, formatEventRange } from '../src/events.js'
 import { getConfig } from '../src/config.js'
 import { LocalStore } from '../src/storage/local.js'
 import { LocalFiles } from '../src/files.js'
@@ -677,6 +678,10 @@ test('admin stays on /admin, and a created event can be set live', async () => {
   assert.match(adminJs, /otherEventPick/)
   assert.match(adminJs, /mount=events/)
   assert.doesNotMatch(adminJs, /delivery_address|Prize delivery address/)
+  assert.match(page, /Start date/)
+  assert.match(page, /End date/)
+  assert.match(adminJs, /newEventEnd/)
+  assert.match(page, /Duplicate pair/)
   const onSiteQr = await app.request('/api/admin/qr/harbour-fest?mount=events', { headers: { cookie } })
   assert.equal(onSiteQr.status, 200)
   assert.equal(onSiteQr.headers.get('content-type'), 'image/png')
@@ -684,4 +689,115 @@ test('admin stays on /admin, and a created event can be set live', async () => {
   assert.match(page, /Add New Staff Account/)
   assert.match(page, /data-testid="show-all"/)
   assert.match(page, /id="stats"/)
+
+  const ranged = await json(await app.request('/api/admin/events', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Range Fest', starts: '2026-11-27', ends: '2026-11-28' })
+  }))
+  assert.equal(ranged.status, 200, ranged.body.error)
+  assert.equal(ranged.body.event.starts, '2026-11-27')
+  assert.equal(ranged.body.event.ends, '2026-11-28')
+  assert.equal(ranged.body.event.rangeLabel, '27-28 Nov 2026')
+  const backwards = await json(await app.request('/api/admin/events', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Backwards Fest', starts: '2026-11-28', ends: '2026-11-27' })
+  }))
+  assert.equal(backwards.status, 400)
+  assert.match(backwards.body.error, /end date/i)
+})
+
+test('one homeowner can submit with each designer, and the same pair is blocked on both paths', async () => {
+  const { app, store } = await build()
+  async function submit(fields) {
+    return json(await app.request('/api/entries', { method: 'POST', body: entryForm(fields) }))
+  }
+  for (const mount of ['events', 'virtual']) {
+    const home = mount === 'events' ? '81110001' : '81110002'
+    const designerA = mount === 'events' ? '62220001' : '62220002'
+    const designerB = mount === 'events' ? '63330001' : '63330002'
+    const first = await submit({
+      mount,
+      homeowner_phone: home,
+      designer_phone: designerA,
+      homeowner_email: `${mount}-a@example.com`,
+      designer_email: `${mount}-designer-a@example.com`
+    })
+    assert.equal(first.status, 200, first.body.error)
+    assert.equal(first.body.code.length, 8)
+    const again = await submit({
+      mount,
+      homeowner_phone: `+65 ${home.slice(0, 4)} ${home.slice(4)}`,
+      designer_phone: `65${designerA}`,
+      homeowner_email: `${mount}-a2@example.com`,
+      designer_email: `${mount}-designer-a2@example.com`
+    })
+    assert.equal(again.status, 409)
+    assert.match(again.body.error, /already spun with this designer/i)
+    assert.equal(again.body.code, undefined)
+    const other = await submit({
+      mount,
+      homeowner_phone: home,
+      designer_phone: designerB,
+      homeowner_email: `${mount}-b@example.com`,
+      designer_email: `${mount}-designer-b@example.com`
+    })
+    assert.equal(other.status, 200, other.body.error)
+    assert.equal(other.body.code.length, 8)
+    assert.notEqual(other.body.code, first.body.code)
+  }
+
+  const login = await app.request('/api/admin/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
+  })
+  const cookie = login.headers.get('set-cookie').split(';')[0]
+  const listed = await json(await app.request('/api/admin/entries', { headers: { cookie } }))
+  const blocked = listed.body.entries.filter((row) => row.status === 'duplicate')
+  assert.equal(blocked.length, 2)
+  assert.ok(blocked.every((row) => row.code === ''))
+
+  const kept = (await store.list()).find((row) => row.homeowner_phone === '81110001' && row.designer_phone === '62220001' && row.status !== 'duplicate')
+  const voided = await json(await app.request(`/api/admin/entries/${kept.id}`, {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'void' })
+  }))
+  assert.equal(voided.status, 200, voided.body.error)
+  const afterVoid = await submit({
+    mount: 'events',
+    homeowner_phone: '81110001',
+    designer_phone: '62220001',
+    homeowner_email: 'events-again@example.com',
+    designer_email: 'events-designer-again@example.com'
+  })
+  assert.equal(afterVoid.status, 200, afterVoid.body.error)
+
+  const second = await json(await app.request('/api/admin/events', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Other Fest', date: todaySGT() })
+  }))
+  assert.equal(second.status, 200, second.body.error)
+  const across = await submit({
+    event_slug: second.body.event.slug,
+    event_date: todaySGT(),
+    mount: 'virtual',
+    homeowner_phone: '81110002',
+    designer_phone: '62220002',
+    homeowner_email: 'across@example.com',
+    designer_email: 'across-designer@example.com'
+  })
+  assert.equal(across.status, 409)
+  assert.match(across.body.error, /already spun with this designer/i)
+
+  const legacyHeader = ['slug', 'name', 'date', 'edition', 'active', 'created_at', 'created_by']
+  assert.deepEqual(eventSheetColumns(legacyHeader), [...legacyHeader, 'starts', 'ends'])
+  const legacyRow = ['old-fest', 'Old Fest', '2026-11-27', '', 'yes', '', '']
+  assert.equal(eventNeedsDateBackfill(legacyHeader, legacyRow), true)
+  const legacy = eventFromCells(legacyHeader, legacyRow)
+  assert.equal(legacy.starts, '2026-11-27')
+  assert.equal(legacy.ends, '2026-11-27')
+  assert.equal(formatEventRange('2026-11-27', '2026-11-27'), '27 Nov 2026')
+  assert.equal(formatEventRange('2026-11-27', '2026-11-28'), '27-28 Nov 2026')
 })

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { claimConflicts } from '../claims.js'
+import { normalizeStoredEvent } from '../events.js'
 import { generateCode } from '../codes.js'
 import { HttpError } from '../http.js'
 import { cloneEntry, toCsv } from '../schema.js'
@@ -187,7 +188,7 @@ export class LocalStore {
   }
 
   async listEvents() {
-    return (await this.readEventFile()).events
+    return (await this.readEventFile()).events.map((event) => normalizeStoredEvent(event))
   }
 
   async readLiveSlug() {
@@ -197,6 +198,7 @@ export class LocalStore {
   async updateEvents(fn) {
     const run = this.eventChain.then(async () => {
       const data = await this.readEventFile()
+      data.events = data.events.map((event) => normalizeStoredEvent(event))
       await fn(data.events)
       await this.writeEventFile(data)
       return data.events

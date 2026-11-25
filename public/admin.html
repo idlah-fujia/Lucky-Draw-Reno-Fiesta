@@ -49,7 +49,8 @@
       <p data-admin-only style="margin-top:12px"><button class="mini ok" type="button" id="createEventBtn" data-testid="create-event">Create Event</button></p>
       <form class="f" id="createEventForm" hidden style="margin-top:12px">
         <label class="fl"><span>Event name</span><input id="newEventName" required></label>
-        <label class="fl"><span>Event date</span><input id="newEventDate" type="date" required></label>
+        <label class="fl"><span>Start date</span><input id="newEventStart" type="date" required></label>
+        <label class="fl"><span>End date</span><input id="newEventEnd" type="date" required></label>
         <div class="err" id="newEventErr" role="alert"></div>
         <button class="go" type="submit">Create</button>
         <button class="mini" id="cancelEventBtn" type="button">Cancel</button>
@@ -104,6 +105,7 @@
         <option value="verified">Verified</option>
         <option value="voided">Voided</option>
         <option value="spam">Spam</option>
+        <option value="duplicate">Duplicate pair</option>
       </select>
       <a class="mini ok" id="csvLink" data-admin-only href="/api/admin/entries.csv">Download CSV</a>
       <button class="mini" id="reloadBtn" type="button">Refresh</button>

@@ -9,7 +9,7 @@ import QRCode from 'qrcode'
 import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
 import { findEvent, getConfig, publicEvent } from './config.js'
 import { defaultEvent, eventMode, modeFromMount, modeFromPath, prefixFor, siteMode } from './mode.js'
-import { assertEventDate, mergeEvents, slugifyEventName, uniqueSlug } from './events.js'
+import { eventRange, formatEventRange, mergeEvents, normalizeStoredEvent, slugifyEventName, uniqueSlug } from './events.js'
 import { formatCode, generateCode, parseCode } from './codes.js'
 import { proofPath, validProofSig } from './sign.js'
 import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
@@ -207,7 +207,7 @@ export function createApp(deps) {
 
     let entry
     try {
-      entry = await store.transaction((list) => {
+      const outcome = await store.transaction((list) => {
         let code = ''
         for (let attempt = 0; attempt < 6; attempt += 1) {
           code = generateCode()
@@ -257,8 +257,19 @@ export function createApp(deps) {
           spam_at: '',
           spam_by: ''
         }
-        return createEntry(list, row)
+        try {
+          return { blocked: false, entry: createEntry(list, row) }
+        } catch (error) {
+          if (error.code !== 'duplicate_pair') throw error
+          row.code = ''
+          row.status = 'duplicate'
+          list.push(row)
+          console.info(`duplicate pair blocked ${row.id}`)
+          return { blocked: true, message: error.message }
+        }
       }, { oncePerEventIds: oncePerEventIds(config) })
+      if (outcome.blocked) return c.json({ error: outcome.message }, 409)
+      entry = outcome.entry
     } catch (error) {
       await files.remove(id).catch(() => {})
       throw error
@@ -623,21 +634,22 @@ export function createApp(deps) {
     const actor = requireAdmin(c)
     const body = await c.req.json().catch(() => ({}))
     const name = cleanText(body.name, { min: 2, max: 80, label: 'the event name' })
-    const date = assertEventDate(body.date)
+    const range = eventRange(body)
     const config = await liveConfig()
     const taken = new Set(config.events.map((event) => event.slug))
     const slug = uniqueSlug(slugifyEventName(name), taken)
     const now = new Date().toISOString()
-    const created = {
+    const created = normalizeStoredEvent({
       slug,
       name,
-      starts: date,
-      ends: date,
+      date: range.date,
+      starts: range.starts,
+      ends: range.ends,
       edition: '',
       active: true,
       created_at: now,
       created_by: actor.email
-    }
+    })
     await store.updateEvents(async (events) => {
       if (events.some((event) => event.slug === slug)) throw new HttpError(409, 'That event name is already in use.')
       events.push(created)

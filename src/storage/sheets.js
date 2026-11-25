@@ -3,7 +3,8 @@ import { claimConflicts } from '../claims.js'
 import { generateCode } from '../codes.js'
 import { HttpError } from '../http.js'
 import { COLUMNS, cloneEntry, entryToRow, rowToEntry } from '../schema.js'
-import { columnLetter, headerRange, reconcileHeader, rowHasData, rowIsDuplicateHeader, sleep } from '../sheetHeader.js'
+import { EVENT_COLUMNS, eventFromCells, eventNeedsDateBackfill, eventSheetColumns, normalizeStoredEvent } from '../events.js'
+import { columnLetter, headerRange, normalizeHeader, reconcileHeader, rowHasData, rowIsDuplicateHeader, sleep } from '../sheetHeader.js'
 
 const SHEET = 'Entries'
 const KIOSK_SHEET = 'KioskQr'
@@ -11,7 +12,6 @@ const KIOSK_COLUMNS = ['event_slug', 'size', 'unit', 'position', 'updated_at']
 const USERS_SHEET = 'users'
 const USER_COLUMNS = ['id', 'name', 'email', 'role', 'password_hash', 'created_at', 'updated_at']
 const EVENTS_SHEET = 'Events'
-const EVENT_COLUMNS = ['slug', 'name', 'starts', 'ends', 'edition', 'active', 'created_at', 'created_by']
 const SETTINGS_SHEET = 'Settings'
 const SETTING_COLUMNS = ['key', 'value']
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
@@ -471,26 +471,28 @@ export class SheetsStore {
   }
 
   async loadEvents() {
-    const values = await this.valuesFor(EVENTS_SHEET, EVENT_COLUMNS)
-    return values.slice(1).filter((row) => row[0] && row[0] !== EVENT_COLUMNS[0]).map((row) => ({
-      slug: row[0],
-      name: row[1] || row[0],
-      starts: row[2] || '',
-      ends: row[3] || row[2] || '',
-      edition: row[4] || '',
-      active: row[5] !== 'no',
-      created_at: row[6] || '',
-      created_by: row[7] || ''
-    }))
+    await this.ensureTab(EVENTS_SHEET)
+    const peek = await this.readGrid(EVENTS_SHEET)
+    const headerNow = normalizeHeader(peek[0] || [])
+    const columns = eventSheetColumns(headerNow)
+    const same = columns.length === headerNow.length && columns.every((name, index) => name === headerNow[index])
+    const values = same ? peek : await this.valuesFor(EVENTS_SHEET, columns)
+    const header = normalizeHeader(values[0] || columns)
+    this.eventColumns = header.length ? header : columns
+    let backfill = false
+    const events = values.slice(1).filter((row) => row[0] && row[0] !== 'slug').map((row) => {
+      if (eventNeedsDateBackfill(header, row)) backfill = true
+      return eventFromCells(header, row)
+    })
+    if (backfill) await this.saveEvents(events)
+    return events
   }
 
   async saveEvents(list) {
     await this.ensureTab(EVENTS_SHEET)
-    const rows = [EVENT_COLUMNS, ...list.map((event) => [
-      event.slug, event.name, event.starts || '', event.ends || '', event.edition || '',
-      event.active === false ? 'no' : 'yes', event.created_at || '', event.created_by || ''
-    ])]
-    const clearRange = encodeURIComponent(`${EVENTS_SHEET}!A:H`)
+    const columns = this.eventColumns?.length ? this.eventColumns : EVENT_COLUMNS
+    const rows = [columns, ...list.map((event) => columns.map((column) => eventCell(event, column)))]
+    const clearRange = encodeURIComponent(`${EVENTS_SHEET}!A:${columnLetter(Math.max(columns.length, 8))}`)
     await this.sheets(
       `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${clearRange}:clear`,
       { method: 'POST' }
@@ -559,6 +561,22 @@ export class SheetsStore {
     this.eventChain = run.then(() => {}, () => {})
     return run
   }
+}
+
+function eventCell(event, column) {
+  const normalized = normalizeStoredEvent(event)
+  if (column === 'slug') return normalized.slug || ''
+  if (column === 'name') return normalized.name || ''
+  if (column === 'date') return normalized.date || normalized.starts || ''
+  if (column === 'starts') return normalized.starts || ''
+  if (column === 'ends') return normalized.ends || ''
+  if (column === 'edition') return normalized.edition || ''
+  if (column === 'active') return normalized.active === false ? 'no' : 'yes'
+  if (column === 'created_at') return normalized.created_at || ''
+  if (column === 'created_by') return normalized.created_by || ''
+  if (column === 'mode') return normalized.mode || ''
+  const value = normalized[column]
+  return value == null ? '' : String(value)
 }
 
 export function isSheetQuota(error) {

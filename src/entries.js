@@ -1,5 +1,8 @@
 import { HttpError } from './http.js'
 import { soldOutIds } from './prizes.js'
+import { normalizePhone } from './validate.js'
+
+export const DUPLICATE_PAIR_MESSAGE = 'This homeowner has already spun with this designer.'
 
 export function firstName(fullName) {
   const part = String(fullName || '').trim().split(/\s+/)[0]
@@ -10,20 +13,38 @@ function findCode(list, code) {
   return list.find((entry) => entry.code === code) || null
 }
 
-export function createEntry(list, entry) {
-  const duplicate = list.find((row) =>
-    row.event_slug === entry.event_slug &&
-    row.homeowner_phone === entry.homeowner_phone &&
-    row.status !== 'voided' &&
-    row.status !== 'spam'
-  )
-  if (duplicate) {
-    throw new HttpError(
-      409,
-      'This mobile number is already registered for this event. Check your email for the spin code, or ask the IDLah booth. Each homeowner gets one spin.'
-    )
+export function pairPhones(entry) {
+  return {
+    homeowner: normalizePhone(entry?.homeowner_phone),
+    designer: normalizePhone(entry?.designer_phone)
   }
-  if (list.some((row) => row.code === entry.code)) {
+}
+
+/** Voided, spam, and logged duplicate attempts do not hold the pair. */
+export function countsAsPair(row) {
+  if (!row) return false
+  if (row.status === 'voided' || row.status === 'spam' || row.status === 'duplicate') return false
+  if (row.voided_at || row.spam_at) return false
+  return true
+}
+
+export function findDuplicatePair(list, entry) {
+  const next = pairPhones(entry)
+  if (!next.homeowner || !next.designer) return null
+  return (list || []).find((row) => {
+    if (!countsAsPair(row)) return false
+    const prev = pairPhones(row)
+    return prev.homeowner === next.homeowner && prev.designer === next.designer
+  }) || null
+}
+
+export function createEntry(list, entry) {
+  if (findDuplicatePair(list, entry)) {
+    const error = new HttpError(409, DUPLICATE_PAIR_MESSAGE)
+    error.code = 'duplicate_pair'
+    throw error
+  }
+  if (entry.code && list.some((row) => row.code && row.code === entry.code)) {
     throw new HttpError(409, 'Please submit the form once more.')
   }
   list.push(entry)

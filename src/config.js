@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { oddsTable } from './prizes.js'
+import { formatEventRange, normalizeStoredEvent } from './events.js'
 import { eventMode } from './mode.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -72,14 +73,16 @@ export function getConfig() {
 }
 
 export function publicEvent(event, fallbackMode) {
+  const normalized = normalizeStoredEvent(event)
   return {
-    slug: event.slug,
-    name: event.name,
-    edition: event.edition || '',
-    starts: event.starts || '',
-    ends: event.ends || '',
-    active: !!event.active,
-    mode: eventMode(event, fallbackMode)
+    slug: normalized.slug,
+    name: normalized.name,
+    edition: normalized.edition || '',
+    starts: normalized.starts || '',
+    ends: normalized.ends || '',
+    rangeLabel: formatEventRange(normalized.starts, normalized.ends),
+    active: !!normalized.active,
+    mode: eventMode(normalized, fallbackMode)
   }
 }
 

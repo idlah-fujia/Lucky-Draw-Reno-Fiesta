@@ -81,12 +81,19 @@
     e.preventDefault();
     var err = document.getElementById('newEventErr');
     err.textContent = '';
+    var starts = document.getElementById('newEventStart').value;
+    var ends = document.getElementById('newEventEnd').value;
+    if (starts && ends && ends < starts) {
+      err.textContent = 'The end date can’t be before the start date.';
+      return;
+    }
     api('/api/admin/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: document.getElementById('newEventName').value,
-        date: document.getElementById('newEventDate').value
+        starts: starts,
+        ends: ends
       })
     }).then(function (created) {
       document.getElementById('createEventForm').reset();
@@ -368,7 +375,7 @@
         '<td><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
         '<td data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
         '<td><b data-testid="row-code">' + esc(row.code) + '</b></td>' +
-        '<td><span class="pill ' + esc(row.status) + '">' + esc(row.status) + '</span></td>' +
+        '<td><span class="pill ' + esc(row.status) + '" data-testid="row-status">' + esc(row.status === 'duplicate' ? 'Duplicate pair' : row.status) + '</span></td>' +
         '<td>' + esc(row.prize_label || '—') + '</td>' +
         '<td>' + (row.proof_link ? '<a href="' + esc(row.proof_link) + '" target="_blank" rel="noopener">Open file</a>' : '—') + '</td>' +
         '<td>' + actions + ' <button class="mini" data-act="toggle" data-id="' + row.id + '">Details</button></td>' +
@@ -413,9 +420,26 @@
   });
 
   function eventDates(event) {
-    if (!event.starts) return '';
-    if (!event.ends || event.ends === event.starts) return event.starts;
-    return event.starts + ' to ' + event.ends;
+    if (event.rangeLabel) return event.rangeLabel;
+    return formatEventRange(event.starts, event.ends);
+  }
+
+  function formatEventRange(starts, ends) {
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function parts(iso) {
+      var bits = String(iso || '').split('-');
+      if (bits.length !== 3) return null;
+      return { year: Number(bits[0]), month: Number(bits[1]), day: Number(bits[2]) };
+    }
+    var from = parts(starts);
+    if (!from) return '';
+    var to = parts(ends || starts) || from;
+    var month = months[from.month - 1] || '';
+    var endMonth = months[to.month - 1] || '';
+    if (from.year === to.year && from.month === to.month && from.day === to.day) return from.day + ' ' + month + ' ' + from.year;
+    if (from.year === to.year && from.month === to.month) return from.day + '-' + to.day + ' ' + month + ' ' + from.year;
+    if (from.year === to.year) return from.day + ' ' + month + '–' + to.day + ' ' + endMonth + ' ' + from.year;
+    return from.day + ' ' + month + ' ' + from.year + '–' + to.day + ' ' + endMonth + ' ' + to.year;
   }
 
   function renderEventQrs() {
@@ -446,7 +470,8 @@
       compact = '<div class="other-events" data-testid="other-events">' +
         '<label class="fl"><span>Other events</span><select id="otherEventPick" aria-label="Other events">' +
         others.map(function (event) {
-          return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '')) + '</option>';
+          var when = eventDates(event);
+          return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '') + (when ? ' · ' + when : '')) + '</option>';
         }).join('') +
         '</select></label><span class="other-actions">' + setBtn +
         '<button class="mini" type="button" id="showAllEvents" data-testid="show-all-events">' + (state.showAllEvents ? 'Hide events' : 'Show all events') + '</button></span>' +
@@ -506,7 +531,7 @@
       var onForm = versionLink('event_day', '/e/' + slug);
       return '<div class="qr-card"><img alt="On-site QR for ' + esc(event.name) + '" loading="lazy" decoding="async" src="/api/admin/qr/' + slug + '?mount=events">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b>' +
-        '<p class="sub">' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
+        '<p class="sub">' + (event.active ? 'Open for entries' : 'Not open') + (eventDates(event) ? ' · ' + esc(eventDates(event)) : '') + '</p>' +
         '<p><b>On-site.</b> ' + esc(onForm) + '</p>' +
         '<p><a href="/api/admin/qr/' + slug + '?mount=events" download="spin-' + esc(event.slug) + '.png">Download PNG</a></p></div></div>';
     }).join('');

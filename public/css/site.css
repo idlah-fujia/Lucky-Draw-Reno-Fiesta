@@ -277,7 +277,7 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .pill.submitted{background:#FFF4D6}
 .pill.spun{background:#FFE1CC;color:#8A3410}
 .pill.verified{background:#E5F8EE;color:#0E7A45}
-.pill.voided,.pill.spam{background:#FFE4E1;color:#9F1239}
+.pill.voided,.pill.spam,.pill.duplicate{background:#FFE4E1;color:#9F1239}
 .account-line{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;padding:10px 0;border-top:1px solid var(--line);white-space:nowrap}
 .account-line b,.account-line span{min-width:0}
 .account-line .role{font-weight:800;text-transform:capitalize}
