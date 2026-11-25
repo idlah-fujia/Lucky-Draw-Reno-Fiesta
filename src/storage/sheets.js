@@ -105,8 +105,9 @@ export class SheetsStore {
         return await this.sheetsOnce(url, options)
       } catch (error) {
         last = error
-        if (!isSheetQuota(error) || attempt === 4) throw error
-        await sleep(300 * 2 ** attempt)
+        if (!isSheetQuota(error) || attempt === 2) throw error
+        const hinted = Number(error.retryAfterMs) || 0
+        await sleep(Math.min(hinted || 1000 * 2 ** attempt, 8000))
       }
     }
     throw last
@@ -137,6 +138,8 @@ export class SheetsStore {
       }
       const error = new Error(`Google Sheets error ${response.status}: ${message}`)
       error.status = response.status
+      const retryAfter = Number(response.headers.get('retry-after'))
+      if (Number.isFinite(retryAfter) && retryAfter > 0) error.retryAfterMs = retryAfter * 1000
       throw error
     }
     return json
