@@ -35,7 +35,9 @@ export const COLUMNS = [
   'spun_at',
   'verified_at',
   'voided_at',
-  'updated_at'
+  'updated_at',
+  'verified_by',
+  'voided_by'
 ]
 
 export function emptyEntry() {

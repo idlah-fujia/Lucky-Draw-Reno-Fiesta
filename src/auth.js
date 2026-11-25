@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { cookies } from './http.js'
 
-const COOKIE = 'sws_admin'
+const COOKIE = 'sws_session'
 const MAX_AGE = 60 * 60 * 14
 
 export function loadFileSecret(dataDir) {
@@ -57,6 +57,27 @@ export function readAdmin(c, password) {
   const given = Buffer.from(mac)
   if (expected.length !== given.length) return false
   return timingSafeEqual(expected, given)
+}
+
+export function sessionToken(userId, secret, now = Date.now()) {
+  const exp = now + MAX_AGE * 1000
+  const payload = `${userId}.${exp}`
+  return `${payload}.${sign(payload, secret)}`
+}
+
+export function readSession(c, secret) {
+  const token = cookies(c)[COOKIE]
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  const [userId, expRaw, mac] = parts
+  const exp = Number(expRaw)
+  if (!userId || !Number.isFinite(exp) || exp < Date.now()) return null
+  const payload = `${userId}.${expRaw}`
+  const expected = Buffer.from(sign(payload, secret))
+  const given = Buffer.from(mac)
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null
+  return { userId }
 }
 
 export function passwordsMatch(given, expected) {

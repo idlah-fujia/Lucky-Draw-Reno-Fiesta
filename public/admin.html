@@ -21,8 +21,9 @@
   <div id="loginView">
     <form class="card login-card" id="loginForm">
       <h2>Staff sign-in</h2>
-      <p class="sub">Entries, proof files, and the event QR codes.</p>
+      <p class="sub">Sign in with your own email and password.</p>
       <div class="f">
+        <label class="fl"><span>Email</span><input id="email" type="email" autocomplete="username" required></label>
         <label class="fl"><span>Password</span><input id="password" type="password" autocomplete="current-password" required></label>
         <div class="err" id="loginErr" role="alert"></div>
         <button class="go" type="submit">Sign in</button>
@@ -34,13 +35,14 @@
       <div>
         <h1>Spin entries</h1>
         <p class="sub" id="storeLine"></p>
+        <p class="sub" id="who" data-testid="who"></p>
       </div>
       <div class="tools">
         <button class="mini" id="logoutBtn" type="button">Sign out</button>
       </div>
     </div>
     <div class="banner" id="storeBanner"></div>
-    <section class="card" id="ledQrCard" data-testid="led-qr-panel">
+    <section class="card" id="ledQrCard" data-testid="led-qr-panel" data-admin-only>
       <h2>LED screen QR</h2>
       <p class="sub">Size and place of the registration QR on the big screen. The screen checks for a new setting about every 20 seconds, and again when it resets. Saving here overrides <code>KIOSK_QR_SIZE</code> and <code>KIOSK_QR_POSITION</code> until the store is wiped.</p>
       <div class="led-grid">
@@ -83,7 +85,7 @@
         <option value="verified">Verified</option>
         <option value="voided">Voided</option>
       </select>
-      <a class="mini ok" id="csvLink" href="/api/admin/entries.csv">Download CSV</a>
+      <a class="mini ok" id="csvLink" data-admin-only href="/api/admin/entries.csv">Download CSV</a>
       <button class="mini" id="reloadBtn" type="button">Refresh</button>
     </div>
     <div class="table-scroll" style="margin-top:12px">
@@ -97,20 +99,33 @@
       </table>
     </div>
     <p class="sub" id="empty" hidden style="margin-top:14px">No entries yet. When a homeowner submits the QR form, they show up here.</p>
+    <section class="card" id="accountsCard" data-testid="staff-accounts" data-admin-only style="margin-top:16px">
+      <h2>Staff accounts</h2>
+      <p class="sub">Admins can add people, change a role, reset a password, or remove an account. The last admin stays. On Render’s free disk these accounts are wiped on restart unless Google Sheets is connected.</p>
+      <form class="f" id="accountForm">
+        <label class="fl"><span>Name</span><input id="accName" required></label>
+        <label class="fl"><span>Email</span><input id="accEmail" type="email" required></label>
+        <label class="fl"><span>Role</span><select id="accRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></label>
+        <label class="fl"><span>Temporary password</span><input id="accPassword" type="text" minlength="8" required></label>
+        <div class="err" id="accErr"></div>
+        <button class="go" type="submit">Add account</button>
+      </form>
+      <div id="accountList" style="margin-top:16px"></div>
+    </section>
     <div class="split">
-      <section class="card">
+      <section class="card" id="qrSection" data-admin-only>
         <h2>Event QR codes</h2>
         <p class="sub">Print one code per event and put it where homeowners can scan it. The link opens the phone form with that event already chosen.</p>
         <div id="qrs"></div>
       </section>
-      <section class="card">
+      <section class="card" id="oddsCard" data-admin-only>
         <h2>Prize odds</h2>
         <p class="sub">From <code>config/spin.config.json</code>. These are placeholders until the team sets the real weights. The iPhone can be won once per event.</p>
         <label class="fl" style="margin-top:10px"><span>Show odds for</span><select id="oddsEvent"></select></label>
         <table class="odds" id="odds"></table>
       </section>
     </div>
-    <section class="card" style="margin-top:16px">
+    <section class="card" id="outboxCard" data-admin-only style="margin-top:16px">
       <h2>Email outbox</h2>
       <p class="sub" id="mailMode"></p>
       <div class="outbox" id="outbox"></div>

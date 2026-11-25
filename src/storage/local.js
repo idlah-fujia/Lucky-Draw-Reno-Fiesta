@@ -11,7 +11,9 @@ export class LocalStore {
     this.cache = []
     this.chain = Promise.resolve()
     this.kioskChain = Promise.resolve()
+    this.userChain = Promise.resolve()
     this.kioskFile = path.join(dir, 'kiosk-qr.json')
+    this.usersFile = path.join(dir, 'users.json')
     this.loaded = false
   }
 
@@ -86,6 +88,35 @@ export class LocalStore {
       return map
     })
     this.kioskChain = run.then(() => {}, () => {})
+    return run
+  }
+
+  async readUsers() {
+    try {
+      const raw = await fs.promises.readFile(this.usersFile, 'utf8')
+      const parsed = raw.trim() ? JSON.parse(raw) : []
+      return Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      if (error.code === 'ENOENT') return []
+      throw error
+    }
+  }
+
+  async writeUsers(list) {
+    await fs.promises.mkdir(this.dir, { recursive: true })
+    const tmp = `${this.usersFile}.tmp`
+    await fs.promises.writeFile(tmp, JSON.stringify(list, null, 2))
+    await fs.promises.rename(tmp, this.usersFile)
+  }
+
+  async updateUsers(fn) {
+    const run = this.userChain.then(async () => {
+      const list = await this.readUsers()
+      await fn(list)
+      await this.writeUsers(list)
+      return list
+    })
+    this.userChain = run.then(() => {}, () => {})
     return run
   }
 }

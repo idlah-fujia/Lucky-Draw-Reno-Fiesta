@@ -6,10 +6,13 @@ import { openStore } from './storage/index.js'
 import { openFiles } from './files.js'
 import { createMailer } from './email.js'
 import { adminPassword, loadFileSecret } from './auth.js'
+import { BOOTSTRAP_EMAIL, ensureBootstrapAdmin } from './users.js'
 
 const dataDir = path.resolve(process.env.DATA_DIR || './data')
 const password = adminPassword()
+const adminEmail = process.env.ADMIN_EMAIL || BOOTSTRAP_EMAIL
 const store = await openStore()
+await ensureBootstrapAdmin(store, { email: adminEmail, password, name: 'Admin' })
 const files = openFiles()
 await files.ready()
 const mailer = createMailer(dataDir)
@@ -35,3 +38,4 @@ console.log(`Form: ${where}/   Big screen: ${where}/spin   Admin: ${where}/admin
 console.log(`Entries: ${runtime.storage}`)
 console.log(`Proof files: ${runtime.proofs}`)
 console.log(`Email: ${runtime.email}`)
+console.log(`Bootstrap admin: ${adminEmail}`)

@@ -63,6 +63,8 @@ async function build(options = {}) {
     allowForcePrize: true,
     siteMode: options.siteMode
   })
+  const { ensureBootstrapAdmin } = await import('../src/users.js')
+  await ensureBootstrapAdmin(store, { email: 'admin@renofiesta.sg', password: 'test-password-1', name: 'Admin' })
   return { app, store, sent, dir }
 }
 
@@ -234,7 +236,7 @@ test('iphone can be won once, a void frees it, and admin can export', async () =
 
   const login = await app.request('/api/admin/login', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ password: 'test-password-1' })
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
   })
   assert.equal(login.status, 200)
   const cookie = login.headers.get('set-cookie').split(';')[0]
@@ -402,7 +404,7 @@ test('kiosk QR uses the event form URL, and admin can save size and position', a
 
   const login = await app.request('/api/admin/login', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ password: 'test-password-1' })
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
   })
   const cookie = login.headers.get('set-cookie').split(';')[0]
   const bad = await json(await app.request('/api/admin/kiosk-qr', {
@@ -479,6 +481,76 @@ test('SITE_MODE picks the home page, and only after-event codes open the phone w
   const configured = getConfig().events.find((event) => event.slug === 'reno-fiesta-nov-2026-after')
   assert.equal(configured.mode, 'after_event')
 })
+
+test('staff can verify but cannot export, void, change settings, or open proof files', async () => {
+  const { app } = await build()
+  const adminLogin = await app.request('/api/admin/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
+  })
+  const adminCookie = adminLogin.headers.get('set-cookie').split(';')[0]
+  const createdUser = await json(await app.request('/api/admin/users', {
+    method: 'POST',
+    headers: { cookie: adminCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Asha', email: 'asha@example.com', role: 'staff', password: 'staff-pass-1' })
+  }))
+  assert.equal(createdUser.status, 200, createdUser.body.error)
+  const staffLogin = await app.request('/api/admin/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'asha@example.com', password: 'staff-pass-1' })
+  })
+  const staffCookie = staffLogin.headers.get('set-cookie').split(';')[0]
+  const created = await json(await app.request('/api/entries', { method: 'POST', body: entryForm({ homeowner_phone: '81238888', homeowner_email: 'role@example.com' }) }))
+  const list = await json(await app.request('/api/admin/entries', { headers: { cookie: staffCookie } }))
+  assert.equal(list.status, 200)
+  assert.equal(list.body.entries[0].proof_link, '')
+  const csv = await app.request('/api/admin/entries.csv', { headers: { cookie: staffCookie } })
+  assert.equal(csv.status, 403)
+  const settings = await app.request('/api/admin/kiosk-qr', {
+    method: 'PUT',
+    headers: { cookie: staffCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ size: 20, unit: 'percent', position: 'top-center' })
+  })
+  assert.equal(settings.status, 403)
+  const users = await app.request('/api/admin/users', { headers: { cookie: staffCookie } })
+  assert.equal(users.status, 403)
+  const odds = await app.request('/api/admin/odds', { headers: { cookie: staffCookie } })
+  assert.equal(odds.status, 403)
+  const outbox = await app.request('/api/admin/outbox', { headers: { cookie: staffCookie } })
+  assert.equal(outbox.status, 403)
+  const entry = list.body.entries.find((row) => row.code === created.body.code)
+  const verified = await json(await app.request(`/api/admin/entries/${entry.id}`, {
+    method: 'POST',
+    headers: { cookie: staffCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'verify' })
+  }))
+  assert.equal(verified.status, 200)
+  assert.equal(verified.body.entry.verified_by, 'asha@example.com')
+  const deniedVoid = await json(await app.request(`/api/admin/entries/${entry.id}`, {
+    method: 'POST',
+    headers: { cookie: staffCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'void' })
+  }))
+  assert.equal(deniedVoid.status, 403)
+  const proof = await app.request(new URL(created.body ? '/proof/x/y' : '/proof/x/y', 'http://localhost').pathname, { headers: { cookie: staffCookie } })
+  assert.equal(proof.status, 404)
+  const adminList = await json(await app.request('/api/admin/entries', { headers: { cookie: adminCookie } }))
+  const withFile = adminList.body.entries.find((row) => row.code === created.body.code)
+  assert.ok(withFile.proof_link.includes('/proof/'))
+  const blockedFile = await app.request(new URL(withFile.proof_link).pathname, { headers: { cookie: staffCookie } })
+  assert.equal(blockedFile.status, 403)
+  const removed = await json(await app.request(`/api/admin/users/${(await storeAdmins(app, adminCookie))[0].id}`, {
+    method: 'POST',
+    headers: { cookie: adminCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'delete' })
+  }))
+  assert.equal(removed.status, 409)
+})
+
+async function storeAdmins(app, cookie) {
+  const body = await json(await app.request('/api/admin/users', { headers: { cookie } }))
+  return body.body.users.filter((user) => user.role === 'admin')
+}
 
 test('the prize pop-up stays for two minutes and counts down as m:ss', async () => {
   const config = getConfig()

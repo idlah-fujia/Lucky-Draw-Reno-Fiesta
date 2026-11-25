@@ -49,7 +49,10 @@
     api('/api/admin/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password: document.getElementById('password').value })
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value
+      })
     }).then(function (session) {
       state.session = session;
       showApp();
@@ -108,28 +111,39 @@
     if (!state.session) return;
     if (state.session.storage === 'sheets') {
       el.className = 'banner sheets';
-      el.textContent = 'Entries are being written to the Google Sheet. Proof files: ' + state.session.files + '. Email: ' + state.session.email + '.';
+      el.textContent = 'Entries are being written to the Google Sheet. Proof files: ' + state.session.files + '. Email: ' + state.session.mail + '.';
     } else {
       el.className = 'banner local';
-      el.textContent = 'Google Sheets is not connected, so entries are in the spreadsheet file data/entries.csv on this server. Connect a sheet with the steps in the README when you’re ready. Email: ' + (state.session.email === 'resend' ? 'Resend' : 'not configured — messages stay in the outbox below') + '.';
+      el.textContent = 'Google Sheets is not connected, so entries are in the spreadsheet file data/entries.csv on this server. Connect a sheet with the steps in the README when you’re ready. Email: ' + (state.session.mail === 'resend' ? 'Resend' : 'not configured — messages stay in the outbox below') + '.';
     }
     line.textContent = 'Status moves from submitted → spun → verified. Void blocks a code from spinning.';
   }
 
   function load() {
-    return Promise.all([
-      api('/api/admin/entries'),
-      api('/api/admin/outbox')
-    ]).then(function (parts) {
+    var admin = state.session && state.session.role === 'admin';
+    var jobs = [api('/api/admin/entries')];
+    if (admin) jobs.push(api('/api/admin/outbox'));
+    return Promise.all(jobs).then(function (parts) {
       state.entries = parts[0].entries;
       state.events = parts[0].events;
       fillFilters();
       banner();
+      applyRole();
       renderTable();
+      if (!admin) return;
       renderQrs();
       renderOutbox(parts[1]);
-      return Promise.all([loadOdds(), loadLed()]);
+      return Promise.all([loadOdds(), loadLed(), loadAccounts()]);
     });
+  }
+
+  function applyRole() {
+    var admin = state.session && state.session.role === 'admin';
+    document.querySelectorAll('[data-admin-only]').forEach(function (el) { el.hidden = !admin; });
+    var who = document.getElementById('who');
+    if (who && state.session) {
+      who.textContent = state.session.name + ' · ' + (admin ? 'Admin' : 'Staff') + ' · ' + state.session.email;
+    }
   }
 
   function applySizeBounds(unit, value) {
@@ -236,9 +250,10 @@
     ].map(function (item) { return '<div class="stat"><b>' + item[1] + '</b><span>' + item[0] + '</span></div>'; }).join('');
     body.innerHTML = rows.map(function (row) {
       var actions = '';
+      var admin = state.session && state.session.role === 'admin';
       if (row.status !== 'voided' && row.status !== 'verified') actions += '<button class="mini ok" data-act="verify" data-id="' + row.id + '">Verify</button> ';
-      if (row.status !== 'voided') actions += '<button class="mini danger" data-act="void" data-id="' + row.id + '">Void</button>';
-      if (row.status === 'voided') actions += '<button class="mini" data-act="undo-void" data-id="' + row.id + '">Undo void</button>';
+      if (admin && row.status !== 'voided') actions += '<button class="mini danger" data-act="void" data-id="' + row.id + '">Void</button>';
+      if (admin && row.status === 'voided') actions += '<button class="mini" data-act="undo-void" data-id="' + row.id + '">Undo void</button>';
       return '<tr>' +
         '<td>' + esc(when(row.created_at)) + '</td>' +
         '<td>' + esc(row.event_name) + '</td>' +
@@ -264,8 +279,8 @@
       '<br><b>Created.</b> ' + esc(when(row.created_at)) +
       ' · <b>Designer saved.</b> ' + esc(when(row.designer_saved_at) || '—') +
       ' · <b>Spun.</b> ' + esc(when(row.spun_at) || '—') +
-      ' · <b>Verified.</b> ' + esc(when(row.verified_at) || '—') +
-      ' · <b>Voided.</b> ' + esc(when(row.voided_at) || '—') +
+      ' · <b>Verified.</b> ' + esc(when(row.verified_at) || '—') + (row.verified_by ? ' by ' + esc(row.verified_by) : '') +
+      ' · <b>Voided.</b> ' + esc(when(row.voided_at) || '—') + (row.voided_by ? ' by ' + esc(row.voided_by) : '') +
       '<br><b>Declarations.</b> contract ' + esc(row.decl_contract) + ', genuine ' + esc(row.decl_genuine) + ', verify ' + esc(row.decl_verify) + ', terms ' + esc(row.decl_tnc) +
       '<br><b>File.</b> ' + esc(row.proof_filename) + ' · ' + esc(row.proof_mime) + ' · ' + esc(row.proof_bytes) + ' bytes';
   }
@@ -322,6 +337,57 @@
       return '<details><summary><b>' + esc(record.status) + '</b> · ' + esc(when(record.at)) + ' · ' + esc(record.to) + ' · ' + esc(record.subject) + '</summary><pre style="white-space:pre-wrap;font:inherit;margin-top:8px">' + esc(record.text) + (record.error ? '\n\n' + esc(record.error) : '') + '</pre></details>';
     }).join('');
   }
+
+  function loadAccounts() {
+    return api('/api/admin/users').then(function (data) {
+      var host = document.getElementById('accountList');
+      host.innerHTML = data.users.map(function (user) {
+        return '<div class="qr-card" data-testid="account-row"><div><b>' + esc(user.name) + '</b> · ' + esc(user.role) +
+          '<p class="sub">' + esc(user.email) + '</p>' +
+          '<p><button class="mini" type="button" data-user="' + user.id + '" data-user-act="role" data-role="' + (user.role === 'admin' ? 'staff' : 'admin') + '">Make ' + (user.role === 'admin' ? 'staff' : 'admin') + '</button> ' +
+          '<button class="mini" type="button" data-user="' + user.id + '" data-user-act="password">Reset password</button> ' +
+          '<button class="mini danger" type="button" data-user="' + user.id + '" data-user-act="delete">Remove</button></p></div></div>';
+      }).join('');
+    });
+  }
+
+  document.getElementById('accountForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var err = document.getElementById('accErr');
+    err.textContent = '';
+    api('/api/admin/users', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('accName').value,
+        email: document.getElementById('accEmail').value,
+        role: document.getElementById('accRole').value,
+        password: document.getElementById('accPassword').value
+      })
+    }).then(function () {
+      document.getElementById('accountForm').reset();
+      return loadAccounts();
+    }).catch(function (error) { err.textContent = error.message; });
+  });
+  document.getElementById('accountList').addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var id = btn.dataset.user;
+    var act = btn.dataset.userAct;
+    var body = { action: act };
+    if (act === 'role') body.role = btn.dataset.role;
+    if (act === 'password') {
+      var password = window.prompt('New password (at least 8 characters)');
+      if (!password) return;
+      body.password = password;
+    }
+    if (act === 'delete' && !window.confirm('Remove this account?')) return;
+    api('/api/admin/users/' + id, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(loadAccounts).catch(function (error) { alert(error.message); });
+  });
 
   api('/api/admin/session').then(function (session) {
     state.session = session;

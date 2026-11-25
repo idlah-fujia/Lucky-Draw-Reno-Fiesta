@@ -4,6 +4,8 @@ import { COLUMNS, cloneEntry, entryToRow, rowToEntry } from '../schema.js'
 const SHEET = 'Entries'
 const KIOSK_SHEET = 'KioskQr'
 const KIOSK_COLUMNS = ['event_slug', 'size', 'unit', 'position', 'updated_at']
+const USERS_SHEET = 'users'
+const USER_COLUMNS = ['id', 'name', 'email', 'role', 'password_hash', 'created_at', 'updated_at']
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
 function privateKey() {
@@ -35,6 +37,7 @@ export class SheetsStore {
     this.rowNumbers = new Map()
     this.chain = Promise.resolve()
     this.kioskChain = Promise.resolve()
+    this.userChain = Promise.resolve()
     this.loaded = false
     this.token = null
     this.tokenExp = 0
@@ -240,6 +243,61 @@ export class SheetsStore {
       { method: 'POST' }
     )
     await this.writeKioskRows(rows)
+  }
+
+  async readUsers() {
+    await this.ensureTab(USERS_SHEET)
+    const range = encodeURIComponent(`${USERS_SHEET}!A1:G`)
+    const data = await this.sheets(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}`)
+    const values = data.values || []
+    if (values.length === 0) {
+      await this.writeUserRows([USER_COLUMNS])
+      return []
+    }
+    const header = values[0]
+    const sameHeader = USER_COLUMNS.every((key, index) => header[index] === key)
+    if (!sameHeader) {
+      throw new Error('The users tab already has a different header row. Rename that tab, then restart.')
+    }
+    return values.slice(1).filter((row) => row[0]).map((row) => ({
+      id: row[0] || '',
+      name: row[1] || '',
+      email: row[2] || '',
+      role: row[3] || '',
+      password_hash: row[4] || '',
+      created_at: row[5] || '',
+      updated_at: row[6] || ''
+    }))
+  }
+
+  async writeUserRows(rows) {
+    const range = encodeURIComponent(`${USERS_SHEET}!A1`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      { method: 'PUT', body: JSON.stringify({ values: rows }) }
+    )
+  }
+
+  async writeUsers(list) {
+    await this.ensureTab(USERS_SHEET)
+    const rows = [USER_COLUMNS, ...list.map((user) => USER_COLUMNS.map((key) => user[key] == null ? '' : String(user[key])))]
+    const clearRange = encodeURIComponent(`${USERS_SHEET}!A:G`)
+    await this.sheets(
+      `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${clearRange}:clear`,
+      { method: 'POST' }
+    )
+    await this.writeUserRows(rows)
+  }
+
+  async updateUsers(fn) {
+    const run = this.userChain.then(async () => {
+      const list = await this.readUsers()
+      await fn(list)
+      await this.writeUsers(list)
+      return list
+    })
+    this.userChain = run.then(() => {}, () => {})
+    return run
   }
 
   async updateKioskQr(eventKey, value) {

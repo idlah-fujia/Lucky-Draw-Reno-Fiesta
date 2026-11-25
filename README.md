@@ -17,6 +17,8 @@ This is a new site. It copies the look of the current Sure-Win page (navy, gold,
 
 Set `PUBLIC_BASE_URL` to that service’s own `https` address so the QR and emails use its host. An event can set `"mode": "event_day"` or `"mode": "after_event"` to override the service for that event only. The QR size control still changes the code. The position control is not used: the QR stays centred.
 
+Staff sign in at `/admin` with their own email and password. The first admin is created on startup from `ADMIN_EMAIL` (default `admin@renofiesta.sg`) and `ADMIN_PASSWORD` when no admin is stored yet. Admins manage accounts in **Staff accounts**. Staff can view entries and mark them verified. Export, void, proof files, LED settings, and account changes stay with admins, and the server refuses those calls. Accounts live in the `users` tab when Google Sheets is connected, otherwise `data/users.json`. On Render’s free disk that file is wiped on restart, so only the bootstrap admin comes back until Sheets is connected. `verified_by` and `voided_by` record who reviewed an entry.
+
 ## The two pages
 
 **Page 1, on a phone** (`/e/your-event`, `/`, or `/register`)

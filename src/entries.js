@@ -77,16 +77,18 @@ export function spinEntry(list, code, prize, nowIso, config, eventSlug) {
   return { entry, already: false }
 }
 
-export function reviewEntry(list, id, action, nowIso) {
+export function reviewEntry(list, id, action, nowIso, actor = '') {
   const entry = list.find((row) => row.id === id)
   if (!entry) throw new HttpError(404, 'Entry not found.')
   if (action === 'verify') {
     if (entry.status === 'voided') throw new HttpError(409, 'Undo the void before verifying.')
     entry.status = 'verified'
     entry.verified_at = entry.verified_at || nowIso
+    entry.verified_by = actor
   } else if (action === 'void') {
     entry.status = 'voided'
     entry.voided_at = nowIso
+    entry.voided_by = actor
   } else if (action === 'undo-void') {
     if (entry.status !== 'voided') throw new HttpError(409, 'This entry is not voided.')
     entry.voided_at = ''

@@ -15,7 +15,8 @@ import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
 import { attachSoldOut, createEntry, firstName, kioskView, reviewEntry, saveDesigner, spinEntry, verifySpinCode } from './entries.js'
 import { MAX_PROOF_BYTES, cleanText, emailAddress, eventDate, homeownerPhone, designerPhone, isUuid, requireYes, safeFilename, sniffProof } from './validate.js'
 import { codeEmail, resultEmails } from './email.js'
-import { adminCookie, adminCookieHeader, passwordsMatch, readAdmin } from './auth.js'
+import { adminCookieHeader, readSession, sessionToken } from './auth.js'
+import { assertUserChange, hashPassword, normalizeEmail, publicUser, verifyPassword } from './users.js'
 import { toCsv } from './schema.js'
 import { GLOBAL_EVENT, QR_LIMITS, clampSize, envKioskQr, normalizeSaved, parsePosition, resolveKioskQr } from './kioskQr.js'
 
@@ -306,6 +307,12 @@ export function createApp(deps) {
     if (!isUuid(id) || !validProofSig(id, c.req.param('sig'), fileSecret)) {
       throw new HttpError(404, 'That file link does not work.')
     }
+    const session = readSession(c, fileSecret)
+    if (session) {
+      const users = await store.readUsers()
+      const user = users.find((item) => item.id === session.userId)
+      if (user && user.role !== 'admin') throw new HttpError(403, 'Proof files are for admin accounts.')
+    }
     return sendProof(c, store, files, id)
   })
 
@@ -315,12 +322,20 @@ export function createApp(deps) {
       throw new HttpError(429, 'Too many tries. Wait a few minutes.')
     }
     const body = await c.req.json().catch(() => ({}))
-    if (!passwordsMatch(body.password || '', adminPassword)) {
-      throw new HttpError(401, 'That password is not right.')
-    }
+    const email = normalizeEmail(body.email)
+    const users = await store.readUsers()
+    const user = users.find((item) => item.email === email)
+    const ok = user ? await verifyPassword(body.password || '', user.password_hash) : false
+    if (!ok) throw new HttpError(401, 'That email or password is not right.')
     const secure = requestBaseUrl(c).startsWith('https://')
-    c.header('Set-Cookie', adminCookieHeader(adminCookie(adminPassword), { secure }))
-    return c.json({ ok: true, storage: store.mode, email: mailer.mode, files: files.mode })
+    c.header('Set-Cookie', adminCookieHeader(sessionToken(user.id, fileSecret), { secure }))
+    return c.json({
+      ok: true,
+      ...publicUser(user),
+      storage: store.mode,
+      mail: mailer.mode,
+      files: files.mode
+    })
   })
 
   app.post('/api/admin/logout', (c) => {
@@ -332,21 +347,104 @@ export function createApp(deps) {
   app.use('*', async (c, next) => {
     const pathName = c.req.path
     if (pathName.startsWith('/api/admin/') && pathName !== '/api/admin/login') {
-      if (!readAdmin(c, adminPassword)) throw new HttpError(401, 'Sign in again.')
+      const session = readSession(c, fileSecret)
+      if (!session) throw new HttpError(401, 'Sign in again.')
+      const users = await store.readUsers()
+      const user = users.find((item) => item.id === session.userId)
+      if (!user) throw new HttpError(401, 'Sign in again.')
+      c.set('staff', user)
     }
     await next()
   })
 
-  app.get('/api/admin/session', (c) => c.json({
-    ok: true,
-    storage: store.mode,
-    email: mailer.mode,
-    files: files.mode
-  }))
+  app.get('/api/admin/session', (c) => {
+    const user = c.get('staff')
+    return c.json({
+      ok: true,
+      ...publicUser(user),
+      storage: store.mode,
+      mail: mailer.mode,
+      files: files.mode
+    })
+  })
+
+  app.get('/api/admin/users', async (c) => {
+    requireAdmin(c)
+    const users = await store.readUsers()
+    return c.json({ users: users.map(publicUser) })
+  })
+
+  app.post('/api/admin/users', async (c) => {
+    requireAdmin(c)
+    const body = await c.req.json().catch(() => ({}))
+    const email = normalizeEmail(body.email)
+    const name = String(body.name || '').trim()
+    const role = body.role === 'admin' ? 'admin' : body.role === 'staff' ? 'staff' : ''
+    const password = String(body.password || '')
+    if (name.length < 2) throw new HttpError(400, 'Enter the person’s name.')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new HttpError(400, 'Enter a valid email.')
+    if (!role) throw new HttpError(400, 'Choose admin or staff.')
+    if (password.length < 8) throw new HttpError(400, 'Use a temporary password of at least 8 characters.')
+    const now = new Date().toISOString()
+    const created = {
+      id: randomUUID(),
+      name,
+      email,
+      role,
+      password_hash: await hashPassword(password),
+      created_at: now,
+      updated_at: now
+    }
+    await store.updateUsers(async (users) => {
+      if (users.some((item) => item.email === email)) throw new HttpError(409, 'That email already has an account.')
+      users.push(created)
+    })
+    return c.json({ user: publicUser(created) })
+  })
+
+  app.post('/api/admin/users/:id', async (c) => {
+    requireAdmin(c)
+    const id = c.req.param('id')
+    const body = await c.req.json().catch(() => ({}))
+    const action = String(body.action || '')
+    let updated = null
+    await store.updateUsers(async (users) => {
+      const target = users.find((item) => item.id === id)
+      if (!target) throw new HttpError(404, 'That account was not found.')
+      const nextRole = body.role === 'admin' ? 'admin' : 'staff'
+      assertUserChange(users, target, action === 'role' ? 'role' : action, nextRole)
+      const now = new Date().toISOString()
+      if (action === 'delete') {
+        users.splice(users.indexOf(target), 1)
+        updated = { deleted: true, id }
+        return
+      }
+      if (action === 'role') {
+        target.role = nextRole
+        target.updated_at = now
+        updated = publicUser(target)
+        return
+      }
+      if (action === 'password') {
+        const password = String(body.password || '')
+        if (password.length < 8) throw new HttpError(400, 'Use a password of at least 8 characters.')
+        target.password_hash = await hashPassword(password)
+        target.updated_at = now
+        updated = publicUser(target)
+        return
+      }
+      throw new HttpError(400, 'Unknown account action.')
+    })
+    return c.json({ user: updated })
+  })
 
   app.get('/api/admin/entries', async (c) => {
     const config = configOf()
-    const list = await freshLinks(await store.list(), c, fileSecret)
+    const user = c.get('staff')
+    let list = await freshLinks(await store.list(), c, fileSecret)
+    if (user.role !== 'admin') {
+      list = list.map((entry) => ({ ...entry, proof_link: '', proof_key: '' }))
+    }
     return c.json({
       entries: list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
       events: config.events.map(asPublic),
@@ -355,6 +453,7 @@ export function createApp(deps) {
   })
 
   app.get('/api/admin/entries.csv', async (c) => {
+    requireAdmin(c)
     const list = await freshLinks(await store.list(), c, fileSecret)
     c.header('Content-Type', 'text/csv; charset=utf-8')
     c.header('Content-Disposition', 'attachment; filename="sure-win-entries.csv"')
@@ -362,6 +461,7 @@ export function createApp(deps) {
   })
 
   app.get('/api/admin/odds', async (c) => {
+    requireAdmin(c)
     const config = configOf()
     const list = await store.list()
     const slug = c.req.query('event') || config.events.find((event) => event.active)?.slug
@@ -371,6 +471,7 @@ export function createApp(deps) {
   })
 
   app.get('/api/admin/outbox', async (c) => {
+    requireAdmin(c)
     const records = await mailer.recent(50)
     return c.json({
       mode: mailer.mode,
@@ -390,11 +491,18 @@ export function createApp(deps) {
     const id = c.req.param('id')
     if (!isUuid(id)) throw new HttpError(404, 'Entry not found.')
     const body = await c.req.json().catch(() => ({}))
-    const entry = await store.transaction((list) => reviewEntry(list, id, String(body.action || ''), new Date().toISOString()))
-    return c.json({ entry: (await freshLinks([entry], c, fileSecret))[0] })
+    const actor = c.get('staff')
+    const action = String(body.action || '')
+    if ((action === 'void' || action === 'undo-void') && actor.role !== 'admin') {
+      throw new HttpError(403, 'That needs an admin account.')
+    }
+    const entry = await store.transaction((list) => reviewEntry(list, id, action, new Date().toISOString(), actor.email))
+    const [linked] = await freshLinks([entry], c, fileSecret)
+    return c.json({ entry: actor.role === 'admin' ? linked : { ...linked, proof_link: '', proof_key: '' } })
   })
 
   app.get('/api/admin/kiosk-qr', async (c) => {
+    requireAdmin(c)
     const config = configOf()
     const requested = String(c.req.query('event') || '').trim()
     const event = requested ? findEvent(config, requested) : null
@@ -413,6 +521,7 @@ export function createApp(deps) {
   })
 
   app.put('/api/admin/kiosk-qr', async (c) => {
+    requireAdmin(c)
     const body = await c.req.json().catch(() => ({}))
     const config = configOf()
     const requested = String(body.event || '').trim()
@@ -432,6 +541,7 @@ export function createApp(deps) {
   })
 
   app.get('/api/admin/qr/:slug', async (c) => {
+    requireAdmin(c)
     const config = configOf()
     const event = findEvent(config, c.req.param('slug'))
     if (!event) throw new HttpError(404, 'Unknown event.')
@@ -470,6 +580,12 @@ export function createApp(deps) {
   })
 
   return app
+}
+
+function requireAdmin(c) {
+  const user = c.get('staff')
+  if (!user || user.role !== 'admin') throw new HttpError(403, 'That needs an admin account.')
+  return user
 }
 
 function eventForScreen(config, slug) {
