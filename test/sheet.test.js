@@ -85,6 +85,22 @@ test('user reads prepare the users tab once and then stay in memory', async () =
   await store.readUsers()
   assert.equal(meta, 1)
   assert.equal(values, 2)
+  store.memo.delete('users')
+  store.prepared.add('users')
+  let concurrent = 0
+  let peak = 0
+  store.sheets = async (url) => {
+    if (String(url).includes('/values/')) {
+      concurrent += 1
+      peak = Math.max(peak, concurrent)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      concurrent -= 1
+      return { values: [['id', 'name', 'email', 'role', 'password_hash', 'created_at', 'updated_at'], ['1', 'Ada', 'ada@example.com', 'admin', 'hash', '', '']] }
+    }
+    return { sheets: [{ properties: { title: 'users' } }] }
+  }
+  await Promise.all([store.readUsers(), store.readUsers(), store.readUsers()])
+  assert.equal(peak, 1)
 })
 
 test('a sheet 429 is retried and a sign-in limit is not treated as quota', async () => {

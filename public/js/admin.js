@@ -416,20 +416,27 @@
   function renderEventQrs() {
     var host = document.getElementById('eventQrList');
     var admin = state.session && state.session.role === 'admin';
-    host.innerHTML = state.events.map(function (event) {
+    var events = state.events.slice().sort(function (a, b) {
+      if (a.slug === state.liveSlug) return -1;
+      if (b.slug === state.liveSlug) return 1;
+      return 0;
+    });
+    host.innerHTML = events.map(function (event) {
       var live = event.slug === state.liveSlug;
-      var origin = versionLink(event.mode, '');
-      var spin = versionLink(event.mode, '/spin?event=' + encodeURIComponent(event.slug));
-      var form = versionLink(event.mode, '/e/' + encodeURIComponent(event.slug));
+      var slug = encodeURIComponent(event.slug);
+      var onSpin = versionLink('event_day', '/spin?event=' + slug);
+      var onForm = versionLink('event_day', '/e/' + slug);
+      var afterForm = versionLink('after_event', '/e/' + slug);
       var control = live
-        ? '<span class="event-live" data-testid="live-event">Live</span>'
+        ? '<span class="live-now" data-testid="live-event">LIVE NOW</span>'
         : (admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '');
-      return '<div class="event-qr" data-testid="event-qr-row"><img alt="QR for ' + esc(event.name) + '" src="/api/admin/qr/' + encodeURIComponent(event.slug) + '">' +
+      return '<div class="event-qr' + (live ? ' live' : '') + '" data-testid="event-qr-row"><img alt="On-site QR for ' + esc(event.name) + '" src="/api/admin/qr/' + slug + '?mount=events">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b> ' + control +
-        '<p class="sub"><a href="' + esc(origin) + '">' + esc(versionLabel(event.mode)) + '</a>' +
-          (event.starts ? ' · ' + esc(event.starts) + (event.ends && event.ends !== event.starts ? ' to ' + esc(event.ends) : '') : '') + '</p>' +
-        '<p><a href="' + esc(spin) + '">Big screen</a> · <a href="' + esc(form) + '">Phone form</a></p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(form) + '</p></div></div>';
+        '<p class="sub">' + (event.starts ? esc(event.starts) + (event.ends && event.ends !== event.starts ? ' to ' + esc(event.ends) : '') : '') + '</p>' +
+        '<p><b>On-site.</b> <a href="' + esc(onSpin) + '">Big screen</a> · <a href="' + esc(onForm) + '">Phone form</a></p>' +
+        '<p style="font-weight:800;word-break:break-all">' + esc(onForm) + '</p>' +
+        '<p><b>After event.</b> <a href="' + esc(afterForm) + '">Phone form</a></p>' +
+        '<p style="font-weight:800;word-break:break-all">' + esc(afterForm) + '</p></div></div>';
     }).join('');
   }
 
@@ -437,6 +444,8 @@
     var btn = e.target.closest('button[data-live]');
     if (!btn) return;
     btn.disabled = true;
+    state.liveSlug = btn.dataset.live;
+    renderEventQrs();
     api('/api/admin/live', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -447,12 +456,13 @@
   function renderQrs() {
     var host = document.getElementById('qrs');
     host.innerHTML = state.events.map(function (event) {
-      var url = versionLink(event.mode, '/e/' + encodeURIComponent(event.slug));
-      return '<div class="qr-card"><img alt="QR for ' + esc(event.name) + '" src="/api/admin/qr/' + encodeURIComponent(event.slug) + '">' +
+      var slug = encodeURIComponent(event.slug);
+      var onForm = versionLink('event_day', '/e/' + slug);
+      return '<div class="qr-card"><img alt="On-site QR for ' + esc(event.name) + '" src="/api/admin/qr/' + slug + '?mount=events">' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b>' +
-        '<p class="sub"><a href="' + esc(versionLink(event.mode, '')) + '">' + esc(versionLabel(event.mode)) + '</a> · ' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
-        '<p style="font-weight:800;word-break:break-all">' + esc(url) + '</p>' +
-        '<p><a href="/api/admin/qr/' + encodeURIComponent(event.slug) + '" download="spin-' + esc(event.slug) + '.png">Download PNG</a></p></div></div>';
+        '<p class="sub">' + (event.active ? 'Open for entries' : 'Not open') + (event.starts ? ' · ' + esc(event.starts) + ' to ' + esc(event.ends) : '') + '</p>' +
+        '<p><b>On-site.</b> ' + esc(onForm) + '</p>' +
+        '<p><a href="/api/admin/qr/' + slug + '?mount=events" download="spin-' + esc(event.slug) + '.png">Download PNG</a></p></div></div>';
     }).join('');
   }
 

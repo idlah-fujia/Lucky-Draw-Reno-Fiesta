@@ -49,6 +49,7 @@ export class SheetsStore {
     this.eventChain = Promise.resolve()
     this.prepared = new Set()
     this.memo = new Map()
+    this.inflight = new Map()
     this.memoMs = 12_000
     this.loaded = false
     this.token = null
@@ -149,24 +150,31 @@ export class SheetsStore {
     this.memo.set(key, { at: Date.now(), value: copyJson(value) })
   }
 
-  recall(key) {
+  recall(key, ttl = this.memoMs) {
     const hit = this.memo.get(key)
-    if (!hit || Date.now() - hit.at > this.memoMs) return null
+    if (!hit || Date.now() - hit.at > ttl) return null
     return copyJson(hit.value)
   }
 
-  async memoRead(key, load) {
-    const hit = this.recall(key)
+  async memoRead(key, load, ttl = this.memoMs) {
+    const hit = this.recall(key, ttl)
     if (hit) return hit
-    try {
-      const value = await load()
-      this.remember(key, value)
-      return copyJson(value)
-    } catch (error) {
-      const stale = this.memo.get(key)
-      if (stale && isSheetQuota(error)) return copyJson(stale.value)
-      throw error
-    }
+    if (this.inflight.has(key)) return copyJson(await this.inflight.get(key))
+    const pending = (async () => {
+      try {
+        const value = await load()
+        this.remember(key, value)
+        return value
+      } catch (error) {
+        const stale = this.memo.get(key)
+        if (stale && isSheetQuota(error)) return stale.value
+        throw error
+      } finally {
+        this.inflight.delete(key)
+      }
+    })()
+    this.inflight.set(key, pending)
+    return copyJson(await pending)
   }
 
   async valuesFor(sheetName, columns) {
@@ -346,7 +354,7 @@ export class SheetsStore {
   }
 
   async readKioskQr() {
-    return this.memoRead('kiosk', () => this.loadKioskQr())
+    return this.memoRead('kiosk', () => this.loadKioskQr(), 25_000)
   }
 
   async loadKioskQr() {
@@ -459,7 +467,7 @@ export class SheetsStore {
   }
 
   async listEvents() {
-    return this.memoRead('events', () => this.loadEvents())
+    return this.memoRead('events', () => this.loadEvents(), 25_000)
   }
 
   async loadEvents() {
@@ -507,7 +515,7 @@ export class SheetsStore {
   }
 
   async readSettings() {
-    return this.memoRead('settings', () => this.loadSettings())
+    return this.memoRead('settings', () => this.loadSettings(), 25_000)
   }
 
   async loadSettings() {

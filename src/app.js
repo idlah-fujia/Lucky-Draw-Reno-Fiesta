@@ -62,13 +62,14 @@ export function createApp(deps) {
 
   app.onError((err, c) => {
     if (isSheetQuota(err)) {
-      return c.json({ error: 'The sheet is busy. Wait a few seconds and try again.' }, 503)
+      return c.json({ error: 'Google Sheet is busy, try again in a few seconds.' }, 503)
     }
     if (err instanceof HttpError || err.status) {
       return c.json({ error: err.message }, err.status || 400)
     }
     console.error(err)
-    return c.json({ error: 'Something went wrong. Please try again.' }, 500)
+    const message = String(err?.message || '').replace(/\s+/g, ' ').trim().slice(0, 240)
+    return c.json({ error: message || 'Something went wrong. Please try again.' }, 500)
   })
 
   app.use('/api/*', async (c, next) => {
@@ -623,8 +624,9 @@ export function createApp(deps) {
     const config = await liveConfig()
     const event = findEvent(config, c.req.param('slug'))
     if (!event) throw new HttpError(404, 'Unknown event.')
-    const pinned = event.mode ? eventMode(event) : modeFromMount(c.req.query('mount')) || 'event_day'
-    return qrPng(c, linkFor(c, eventMode(event, pinned), event.slug, 'form'), `spin-${event.slug}.png`, { dark: '#1B0F33', light: '#FFFFFF' })
+    const forced = modeFromMount(c.req.query('mount'))
+    const mode = forced || (event.mode ? eventMode(event) : 'event_day')
+    return qrPng(c, linkFor(c, mode, event.slug, 'form'), `spin-${event.slug}.png`, { dark: '#1B0F33', light: '#FFFFFF' })
   })
 
   const htmlHeaders = { 'Cache-Control': 'no-cache' }

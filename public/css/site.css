@@ -229,6 +229,8 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .account-line .role{font-weight:800;text-transform:capitalize}
 .account-line .acts{display:flex;gap:6px;margin-left:auto}
 .event-qr{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.event-qr.live{margin-top:8px;background:#E5F8EE;border:2px solid #0E7A45;border-radius:14px;padding:12px}
+.live-now{display:inline-flex;align-items:center;margin-left:8px;background:#0E7A45;color:#fff;font-weight:900;font-size:12px;letter-spacing:.04em;border-radius:999px;padding:4px 10px}
 .event-qr img{width:112px;height:112px;border-radius:12px;background:#fff;justify-self:center}
 .event-live{font-weight:900;color:#0E7A45}
 @media(max-width:700px){.account-line{flex-wrap:wrap;white-space:normal}.account-line .acts{margin-left:0}}
