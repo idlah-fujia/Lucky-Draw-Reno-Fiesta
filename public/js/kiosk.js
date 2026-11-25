@@ -1,6 +1,5 @@
 (function () {
   var ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  var ROWS = ['ABCDEFGH', 'JKMNPQRS', 'TUVWXYZ', '23456789'];
   var wheel = document.getElementById('wheel');
   var panel = document.getElementById('panel');
   var spinBtn = document.getElementById('spinBtn');
@@ -165,51 +164,39 @@
     panel.innerHTML =
       '<div class="kiosk-title">Enter your spin code</div>' +
       '<p class="kiosk-sub">8 characters from the homeowner’s phone. No O, 0, I, 1 or L.</p>' +
-      '<div class="boxes" id="boxes" data-testid="code-boxes"></div>' +
+      '<input id="codeInput" class="code-entry" data-testid="code-input" type="text" inputmode="text" maxlength="24" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-label="Spin code" autofocus>' +
       '<div class="err" id="panelErr" role="alert"></div>' +
-      '<div class="keypad"><div class="keys" id="keys"></div>' +
-      '<button class="go" id="checkBtn" type="button" data-testid="check-code">Check code</button></div>';
-    drawBoxes();
-    var keys = $('keys');
-    keys.innerHTML = ROWS.map(function (row) {
-      return '<div class="row" style="grid-template-columns:repeat(' + row.length + ',1fr)">' + row.split('').map(function (ch) {
-        return '<button type="button" data-key="' + ch + '">' + ch + '</button>';
-      }).join('') + '</div>';
-    }).join('') + '<div class="row" style="grid-template-columns:1fr 1fr"><button type="button" data-act="clear">Clear</button><button type="button" data-act="back">Delete</button></div>';
-    keys.addEventListener('click', function (e) {
-      var btn = e.target.closest('button');
-      if (!btn) return;
-      ac();
-      if (btn.dataset.key) pushCode(btn.dataset.key);
-      if (btn.dataset.act === 'back') pushCode('back');
-      if (btn.dataset.act === 'clear') { code = ''; drawBoxes(); $('panelErr').textContent = ''; }
+      '<button class="go" id="checkBtn" type="button" data-testid="check-code">Check code</button>';
+    var input = $('codeInput');
+    input.addEventListener('input', function () { applyCodeInput(input); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submitCode(); }
     });
     $('checkBtn').addEventListener('click', submitCode);
+    input.focus();
     armIdle();
   }
 
-  function drawBoxes() {
-    var boxes = $('boxes');
-    if (!boxes) return;
-    boxes.innerHTML = '';
-    for (var i = 0; i < 8; i++) {
-      var cell = document.createElement('i');
-      cell.textContent = code[i] || '';
-      if (i === code.length) cell.className = 'on';
-      boxes.appendChild(cell);
+  function applyCodeInput(input) {
+    var raw = String(input.value || '').toUpperCase().replace(/[\s-]/g, '');
+    var next = '';
+    var skipped = '';
+    for (var i = 0; i < raw.length; i++) {
+      var ch = raw.charAt(i);
+      if (ALPHABET.indexOf(ch) >= 0) {
+        if (next.length < 8) next += ch;
+      } else if (/[A-Z0-9]/.test(ch)) skipped = ch;
     }
-  }
-  function pushCode(ch) {
-    $('panelErr') && ($('panelErr').textContent = '');
-    if (ch === 'back') code = code.slice(0, -1);
-    else if (code.length < 8 && ALPHABET.indexOf(ch) >= 0) code += ch;
-    else if (ch && ALPHABET.indexOf(ch) < 0 && /[A-Z0-9]/.test(ch)) {
+    if (input.value !== next) input.value = next;
+    code = next;
+    if ($('panelErr')) {
+      $('panelErr').textContent = skipped ? '“' + skipped + '” isn’t used. Codes skip O, 0, I, 1 and L.' : '';
+    }
+    if (skipped) {
       panel.classList.remove('shake');
       void panel.offsetWidth;
       panel.classList.add('shake');
-      if ($('panelErr')) $('panelErr').textContent = '“' + ch + '” isn’t used. Codes skip O, 0, I, 1 and L.';
     }
-    drawBoxes();
     armIdle();
   }
 
@@ -402,12 +389,16 @@
   }
 
   document.addEventListener('pointerdown', function () { ac(); armIdle(); }, { passive: true });
-  document.addEventListener('keydown', function (e) {
-    if (mode !== 'code') return;
-    if (e.target && e.target.matches && e.target.matches('input, textarea')) return;
-    if (e.key === 'Backspace') { pushCode('back'); e.preventDefault(); }
-    else if (e.key === 'Enter') submitCode();
-    else if (e.key && e.key.length === 1) pushCode(e.key.toUpperCase());
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.matches || el.id === 'codeInput') return;
+    if (!el.matches('input[type="text"], textarea')) return;
+    var upper = String(el.value || '').toUpperCase();
+    if (el.value !== upper) {
+      var pos = el.selectionStart;
+      el.value = upper;
+      if (typeof el.setSelectionRange === 'function' && pos != null) el.setSelectionRange(pos, pos);
+    }
   });
   spinBtn.addEventListener('click', doSpin);
   $('nextBtn').addEventListener('click', resetAll);

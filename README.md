@@ -283,7 +283,7 @@ Also:
 - The registration QR sits at the top (unless staff moved it). Scrolling the page reaches the keypad and the wheel. After a reset the page returns to the QR.
 - Leave the page open all day. Refresh it in the morning, not while someone is at the wheel. A refresh only clears what has not been saved; a finished spin is already on the server.
 - **Fill the screen** in the corner does the same job if you are not using the kiosk shortcut.
-- There is an on-screen keypad for the code, so the PC does not need a keyboard. A real keyboard still works. Designer details are entered on the phone, not on this screen.
+- Type the code with a normal keyboard or paste it. The box turns everything into capitals and skips O, 0, I, 1 and L. Designer details are entered on the phone, not on this screen.
 - If nobody touches the screen for 90 seconds during code entry, it clears itself. That idle timer does not run while the prize pop-up is open. After a prize, the pop-up closes in 2 minutes (`kioskResetSeconds`), or sooner with **Close**. The countdown reads “Closing in 2:00”.
 
 ## Codes

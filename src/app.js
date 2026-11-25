@@ -449,8 +449,8 @@ export function createApp(deps) {
   app.notFound((c) => {
     if (c.req.path.startsWith('/api/')) return c.json({ error: 'Not found.' }, 404)
     return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not found · Sure-Win Spin</title>
-      <body style="font-family:'DM Sans',system-ui,sans-serif;background:#FFF8F1;color:#1B1714;display:grid;place-items:center;min-height:100vh;margin:0">
-      <div style="text-align:center;padding:24px"><h1>That page isn’t on the spin site.</h1><p><a href="/">Back to the form</a> · <a href="/spin">Big screen</a></p></div></body></html>`, 404)
+      <body style="font-family:'DM Sans',system-ui,sans-serif;background:#FFF8F1;color:#1B1714;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px">
+      <div style="text-align:center;max-width:28rem"><h1 style="font-size:clamp(1.6rem,6vw,2.2rem);line-height:1.15">That page isn’t on the spin site.</h1><p style="font-size:1.05rem;display:flex;flex-wrap:wrap;gap:12px;justify-content:center"><a href="/" style="min-height:44px;display:inline-flex;align-items:center">Back to the form</a><a href="/spin" style="min-height:44px;display:inline-flex;align-items:center">Big screen</a></p></div></body></html>`, 404)
   })
 
   return app

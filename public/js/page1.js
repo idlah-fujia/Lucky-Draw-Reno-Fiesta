@@ -67,14 +67,14 @@
   function renderDate(event) {
     var slot = document.getElementById('dateSlot');
     if (!event) {
-      slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" data-testid="event-date" disabled><option value="">Choose an event first</option></select></label><div class="ed" id="ed" aria-live="polite"></div>';
+      slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" data-testid="event-date" disabled><option value="">Choose an event first</option></select><div class="ed" id="ed" aria-live="polite"></div></label>';
       return;
     }
     var days = eventDays(event);
     var range = event.starts && event.ends ? (event.starts === event.ends ? event.starts : event.starts + ' to ' + event.ends) : '';
     if (days.length === 1) {
-      slot.innerHTML = '<label class="fl"><span>Event date</span><input name="event_date" id="eventDate" data-testid="event-date" value="' + esc(days[0]) + '" readonly required></label>' +
-        '<div class="ed" id="ed" aria-live="polite">Filled from the event' + (range ? ' · ' + esc(range) : '') + '</div>';
+      slot.innerHTML = '<label class="fl"><span>Event date</span><input name="event_date" id="eventDate" data-testid="event-date" value="' + esc(days[0]) + '" readonly required>' +
+        '<div class="ed" id="ed" aria-live="polite">Filled from the event' + (range ? ' · ' + esc(range) : '') + '</div></label>';
       return;
     }
     if (days.length > 1) {
@@ -83,11 +83,11 @@
       slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" data-testid="event-date" required>' +
         '<option value="">Choose a day</option>' +
         days.map(function (day) { return '<option value="' + day + '">' + day + '</option>'; }).join('') +
-        '</select></label><div class="ed" id="ed" aria-live="polite">This event runs ' + esc(range) + '. Choose the day.</div>';
+        '</select><div class="ed" id="ed" aria-live="polite">This event runs ' + esc(range) + '. Choose the day.</div></label>';
       if (preferred) document.getElementById('eventDate').value = preferred;
       return;
     }
-    slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" disabled><option value="">No dates on this event</option></select></label><div class="ed" id="ed">This event has no dates in the config.</div>';
+    slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" disabled><option value="">No dates on this event</option></select><div class="ed" id="ed">This event has no dates in the config.</div></label>';
   }
 
   function refreshSold(slug) {
