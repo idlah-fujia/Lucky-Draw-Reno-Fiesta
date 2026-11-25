@@ -11,6 +11,7 @@ import { LocalStore } from '../src/storage/local.js'
 import { LocalFiles } from '../src/files.js'
 import { todaySGT } from '../src/http.js'
 import { formatCode } from '../src/codes.js'
+import { normalizePhone } from '../src/validate.js'
 import { envKioskQr } from '../src/kioskQr.js'
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
@@ -249,7 +250,9 @@ test('iphone can be won once, a void frees it, and admin can export', async () =
   const iphone = list.body.entries.find((row) => row.code === first)
   assert.equal(iphone.prize_id, 'IPHONE')
   assert.ok(iphone.proof_link.includes('/proof/'))
-  const file = await app.request(new URL(iphone.proof_link).pathname)
+  const locked = await app.request(new URL(iphone.proof_link).pathname)
+  assert.equal(locked.status, 401)
+  const file = await app.request(new URL(iphone.proof_link).pathname, { headers: { cookie } })
   assert.equal(file.status, 200)
   assert.equal(file.headers.get('content-type'), 'image/png')
 
@@ -490,7 +493,7 @@ test('the path picks the version, and only after-event codes open the phone whee
   assert.equal(stored.delivery_address, '')
   const oldVirtual = await app.request('/virtual/e/reno-fiesta-nov-2026', { redirect: 'manual' })
   assert.equal(oldVirtual.status, 302)
-  assert.equal(oldVirtual.headers.get('location'), '/virtual')
+  assert.equal(oldVirtual.headers.get('location'), '/virtual?event=reno-fiesta-nov-2026')
   const oldSpin = await app.request('/spin?event=reno-fiesta-nov-2026', { redirect: 'manual' })
   assert.equal(oldSpin.status, 302)
   assert.match(oldSpin.headers.get('location') || '', /\/events\/spin\?event=reno-fiesta-nov-2026$/)
@@ -800,4 +803,79 @@ test('one homeowner can submit with each designer, and the same pair is blocked 
   assert.equal(legacy.ends, '2026-11-27')
   assert.equal(formatEventRange('2026-11-27', '2026-11-27'), '27 Nov 2026')
   assert.equal(formatEventRange('2026-11-27', '2026-11-28'), '27-28 Nov 2026')
+})
+
+test('trial fixes: phones, proof session, event names, archive, and the on-site code page', async () => {
+  assert.equal(normalizePhone('+65 8123 4567'), '81234567')
+  assert.equal(normalizePhone('6581234567'), '81234567')
+  assert.equal(normalizePhone('6562345678'), '62345678')
+  const pageJs = fs.readFileSync(new URL('../public/js/page1.js', import.meta.url), 'utf8')
+  assert.match(pageJs, /result\.mode === 'after_event'/)
+  assert.doesNotMatch(pageJs, /result\.event && result\.event\.mode/)
+  assert.match(pageJs, /\^65\[3689\]/)
+  const kiosk = fs.readFileSync(new URL('../public/js/kiosk.js', import.meta.url), 'utf8')
+  assert.match(kiosk, /Check the code: 8 characters, no O, 0, I, 1 or L/)
+  assert.match(kiosk, /emailStatus === 'sent'/)
+  assert.match(kiosk, /Screenshot this pop-up/)
+  assert.match(kiosk, /spin on this phone/)
+
+  const { app } = await build()
+  const eventsForm = await app.request('/api/entries', { method: 'POST', body: entryForm({ mount: 'events', homeowner_phone: '81112221', designer_phone: '62221111', homeowner_email: 'onsite@example.com', designer_email: 'onsite-d@example.com' }) })
+  const created = await json(eventsForm)
+  assert.equal(created.status, 200, created.body.error)
+  assert.equal(created.body.mode, 'event_day')
+  assert.equal(created.body.event.mode, 'event_day')
+  assert.doesNotMatch(created.body.spinUrl, /\/virtual/)
+
+  const login = await app.request('/api/admin/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
+  })
+  const cookie = login.headers.get('set-cookie').split(';')[0]
+  const list = await json(await app.request('/api/admin/entries', { headers: { cookie } }))
+  const row = list.body.entries.find((entry) => entry.code === created.body.code)
+  const htmlProof = await app.request(new URL(row.proof_link).pathname, { headers: { accept: 'text/html' }, redirect: 'manual' })
+  assert.equal(htmlProof.status, 302)
+  assert.equal(htmlProof.headers.get('location'), '/admin')
+  const opened = await app.request(new URL(row.proof_link).pathname, { headers: { cookie } })
+  assert.equal(opened.status, 200)
+
+  const sameName = await json(await app.request('/api/admin/events', {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'reno fiesta', date: todaySGT() })
+  }))
+  assert.equal(sameName.status, 409)
+  assert.match(sameName.body.error, /already in use/i)
+
+  const live = await json(await app.request('/api/admin/live', {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'reno-fiesta-nov-2026' })
+  }))
+  assert.equal(live.status, 200, live.body.error)
+  const keepLive = await json(await app.request('/api/admin/events/archive', {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'reno-fiesta-nov-2026', archived: true })
+  }))
+  assert.equal(keepLive.status, 400)
+  const made = await json(await app.request('/api/admin/events', {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Archive Fest', date: todaySGT() })
+  }))
+  assert.equal(made.status, 200, made.body.error)
+  const hidden = await json(await app.request('/api/admin/events/archive', {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: made.body.event.slug, archived: true })
+  }))
+  assert.equal(hidden.status, 200, hidden.body.error)
+  const boot = await json(await app.request('/api/bootstrap'))
+  assert.equal(boot.body.events.some((event) => event.slug === made.body.event.slug), false)
+  const gone = await app.request('/api/events/' + made.body.event.slug)
+  assert.equal(gone.status, 404)
+  const back = await json(await app.request('/api/admin/events/archive', {
+    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: made.body.event.slug, archived: false })
+  }))
+  assert.equal(back.status, 200, back.body.error)
+  const bootAgain = await json(await app.request('/api/bootstrap'))
+  assert.equal(bootAgain.body.events.some((event) => event.slug === made.body.event.slug), true)
 })

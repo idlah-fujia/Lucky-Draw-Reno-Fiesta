@@ -92,11 +92,16 @@
     slot.innerHTML = '<label class="fl"><span>Event date</span><select name="event_date" id="eventDate" disabled><option value="">No dates on this event</option></select><div class="ed" id="ed">This event has no dates in the config.</div></label>';
   }
 
+  function localPhone(value) {
+    var digits = String(value || '').replace(/\D/g, '');
+    if (/^65[3689]/.test(digits) && digits.length >= 10) digits = digits.slice(2);
+    return digits.slice(0, 8);
+  }
   document.getElementById('homePhone').addEventListener('input', function () {
-    this.value = this.value.replace(/\D/g, '').slice(0, 8);
+    this.value = localPhone(this.value);
   });
   document.getElementById('designerPhone').addEventListener('input', function () {
-    this.value = this.value.replace(/\D/g, '').slice(0, 8);
+    this.value = localPhone(this.value);
   });
   document.getElementById('proof').addEventListener('change', function () {
     var file = this.files[0];
@@ -204,7 +209,7 @@
     var emailNote = result.emailStatus === 'sent'
       ? 'We also emailed it to <b>' + esc(result.email) + '</b>.'
       : 'Email isn’t sending from this server yet, so the screenshot is what counts. Staff can look the code up if you lose it.';
-    var after = result.mode === 'after_event' || (result.event && result.event.mode === 'after_event');
+    var after = result.mode === 'after_event';
     var spinHref = result.spinUrl || ((after ? '/virtual' : '/events') + '/spin?event=' + encodeURIComponent((result.event && result.event.slug) || '') + '&code=' + encodeURIComponent(result.code));
     document.getElementById('formCard').innerHTML =
       '<div class="done-card">' +

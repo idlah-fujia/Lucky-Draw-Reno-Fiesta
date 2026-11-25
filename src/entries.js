@@ -145,13 +145,17 @@ export function verifySpinCode(list, code, eventSlug, config, options) {
   return attachSoldOut(kioskView(entry, config), list, config)
 }
 
-function requireEventCode(list, code, eventSlug, { allowAnyEvent = false } = {}) {
+function requireEventCode(list, code, eventSlug, { allowAnyEvent = false, afterEvent = false } = {}) {
   const event = String(eventSlug || '').trim()
   if (!event && !allowAnyEvent) {
     throw new HttpError(400, 'This screen is not tied to an event. Open the spin page with the event link.')
   }
   const entry = findCode(list, code)
-  if (!entry) throw new HttpError(404, 'Code not recognised. Check the code on the homeowner’s phone.')
+  if (!entry) {
+    throw new HttpError(404, afterEvent
+      ? 'Code not recognised. Check the code from your spin link: 8 characters, no O, 0, I, 1 or L.'
+      : 'Code not recognised. Check the code on the homeowner’s phone.')
+  }
   if (event && entry.event_slug !== event) {
     throw new HttpError(409, `This code is for ${entry.event_name}, not this screen.`)
   }

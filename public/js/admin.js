@@ -266,10 +266,10 @@
     var current = eventFilter.value;
     var oddsCurrent = odds.value;
     var options = '<option value="">All events</option>' + state.events.map(function (event) {
-      return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '')) + '</option>';
+      return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '') + (event.archived ? ' (archived)' : '')) + '</option>';
     }).join('');
     eventFilter.innerHTML = options;
-    odds.innerHTML = state.events.map(function (event) {
+    odds.innerHTML = state.events.filter(function (event) { return !event.archived; }).map(function (event) {
       return '<option value="' + esc(event.slug) + '">' + esc(event.name) + '</option>';
     }).join('');
     eventFilter.value = current;
@@ -349,16 +349,21 @@
     document.getElementById('empty').hidden = state.entries.length !== 0;
     var counts = tileCounts(scoped());
     document.getElementById('stats').innerHTML = [
-      ['Total entries', counts.total],
-      ['Submitted', counts.submitted],
-      ['Spam', counts.spam],
-      ['Verified', counts.verified],
-      ['Voided', counts.voided],
-      ['iPhones won', counts.iphone]
-    ].map(function (item) { return '<div class="stat" data-testid="stat-' + item[0].toLowerCase().replace(/\s+/g, '-') + '"><b>' + item[1] + '</b><span>' + item[0] + '</span></div>'; }).join('');
+      ['Total entries', counts.total, ''],
+      ['Active', counts.submitted, 'Not spam or voided'],
+      ['Spam', counts.spam, ''],
+      ['Verified', counts.verified, ''],
+      ['Voided', counts.voided, ''],
+      ['iPhones won', counts.iphone, '']
+    ].map(function (item) {
+      return '<div class="stat" data-testid="stat-' + item[0].toLowerCase().replace(/\s+/g, '-') + '"><b>' + item[1] + '</b><span>' + item[0] + '</span>' +
+        (item[2] ? '<small>' + item[2] + '</small>' : '') + '</div>';
+    }).join('');
     var more = document.getElementById('showAllBtn');
     more.hidden = rows.length <= 10;
     more.textContent = state.showAll ? 'Show less' : 'Show All';
+    var count = document.getElementById('entryCount');
+    if (count) count.textContent = rows.length ? 'Showing ' + shown.length + ' of ' + rows.length + ' entries' : '';
     rows = shown;
     body.innerHTML = rows.map(function (row) {
       var actions = '';
@@ -368,17 +373,18 @@
       if (admin && row.status === 'voided') actions += '<button class="mini" data-act="undo-void" data-id="' + row.id + '">Undo void</button>';
       if (admin && row.status !== 'spam' && row.status !== 'voided') actions += '<button class="mini" data-act="spam" data-id="' + row.id + '">Mark as spam</button> ';
       if (admin && row.status === 'spam') actions += '<button class="mini" data-act="undo-spam" data-id="' + row.id + '">Undo spam</button>';
-      return '<tr>' +
-        '<td>' + esc(when(row.created_at)) + '</td>' +
-        '<td data-testid="row-version">' + (hostFor(row.site_mode) ? '<a href="' + esc(hostFor(row.site_mode)) + '">' + esc(versionLabel(row.site_mode)) + '</a>' : '—') + '</td>' +
-        '<td>' + esc(row.event_name) + '</td>' +
-        '<td><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
-        '<td data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
-        '<td><b data-testid="row-code">' + esc(row.code) + '</b></td>' +
-        '<td><span class="pill ' + esc(row.status) + '" data-testid="row-status">' + esc(row.status === 'duplicate' ? 'Duplicate pair' : row.status) + '</span></td>' +
-        '<td>' + esc(row.prize_label || '—') + '</td>' +
-        '<td>' + (row.proof_link ? '<a href="' + esc(row.proof_link) + '" target="_blank" rel="noopener">Open file</a>' : '—') + '</td>' +
-        '<td>' + actions + ' <button class="mini" data-act="toggle" data-id="' + row.id + '">Details</button></td>' +
+      var shortVersion = row.site_mode === 'after_event' ? '/virtual' : row.site_mode === 'event_day' ? '/events' : '—';
+      return '<tr class="entry-row">' +
+        '<td data-label="When">' + esc(when(row.created_at)) + '</td>' +
+        '<td data-label="Version" data-testid="row-version">' + (hostFor(row.site_mode) ? '<a href="' + esc(hostFor(row.site_mode)) + '">' + esc(shortVersion) + '</a>' : '—') + '</td>' +
+        '<td data-label="Event">' + esc(row.event_name) + '</td>' +
+        '<td data-label="Homeowner"><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
+        '<td data-label="Designer" data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
+        '<td data-label="Code"><b data-testid="row-code">' + esc(row.code) + '</b></td>' +
+        '<td data-label="Status"><span class="pill ' + esc(row.status) + '" data-testid="row-status">' + esc(row.status === 'duplicate' ? 'Duplicate pair' : row.status) + '</span></td>' +
+        '<td data-label="Prize">' + esc(row.prize_label || '—') + '</td>' +
+        '<td data-label="Proof">' + (row.proof_link ? '<a href="' + esc(row.proof_link) + '" target="_blank" rel="noopener">Open file</a>' : '—') + '</td>' +
+        '<td data-label="Actions" class="row-actions">' + actions + ' <button class="mini" data-act="toggle" data-id="' + row.id + '">Details</button></td>' +
         '</tr>' +
         '<tr class="detail" id="detail-' + row.id + '" hidden><td colspan="10">' + detail(row) + '</td></tr>';
     }).join('');
@@ -446,7 +452,8 @@
     var host = document.getElementById('eventQrList');
     var admin = state.session && state.session.role === 'admin';
     var live = state.events.filter(function (event) { return event.slug === state.liveSlug; })[0] || null;
-    var others = state.events.filter(function (event) { return !live || event.slug !== live.slug; });
+    var others = state.events.filter(function (event) { return (!live || event.slug !== live.slug) && !event.archived; });
+    var archived = state.events.filter(function (event) { return event.archived && (!live || event.slug !== live.slug); });
     var afterUrl = (hostFor('after_event') || '/virtual').replace(/\/$/, '');
     var liveCard = '';
     if (live) {
@@ -465,21 +472,28 @@
       '<p class="break-url" data-testid="after-event-url">' + esc(afterUrl) + '</p>' +
       '<p><button class="mini" type="button" id="copyAfterEvent" data-url="' + esc(afterUrl) + '">Copy link</button></p></div></div>';
     var compact = '';
-    if (others.length) {
-      var setBtn = admin ? '<button class="mini" type="button" id="setOtherLive">Set as live</button>' : '';
-      compact = '<div class="other-events" data-testid="other-events">' +
-        '<label class="fl"><span>Other events</span><select id="otherEventPick" aria-label="Other events">' +
-        others.map(function (event) {
-          var when = eventDates(event);
-          return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '') + (when ? ' · ' + when : '')) + '</option>';
-        }).join('') +
-        '</select></label><span class="other-actions">' + setBtn +
+    if (others.length || archived.length) {
+      var setBtn = admin && others.length ? '<button class="mini" type="button" id="setOtherLive">Set as live</button>' : '';
+      var picker = others.length
+        ? '<label class="fl"><span>Other events</span><select id="otherEventPick" aria-label="Other events">' +
+          others.map(function (event) {
+            var when = eventDates(event);
+            return '<option value="' + esc(event.slug) + '">' + esc(event.name + (event.edition ? ' · ' + event.edition : '') + (when ? ' · ' + when : '')) + '</option>';
+          }).join('') +
+          '</select></label>'
+        : '';
+      function line(event, hidden) {
+        var action = '';
+        if (admin && !hidden) action += '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>';
+        if (admin) action += '<button class="mini" type="button" data-archive="' + esc(event.slug) + '" data-archived="' + (hidden ? 'no' : 'yes') + '">' + (hidden ? 'Unarchive' : 'Archive') + '</button>';
+        return '<div class="event-line"><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + (hidden ? ' · archived' : '') + '</b><span>' + esc(eventDates(event)) + '</span><span class="event-line-actions">' + action + '</span></div>';
+      }
+      compact = '<div class="other-events" data-testid="other-events">' + picker +
+        '<span class="other-actions">' + setBtn +
         '<button class="mini" type="button" id="showAllEvents" data-testid="show-all-events">' + (state.showAllEvents ? 'Hide events' : 'Show all events') + '</button></span>' +
         '<div id="allEvents"' + (state.showAllEvents ? '' : ' hidden') + '>' +
-        others.map(function (event) {
-          var action = admin ? '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>' : '';
-          return '<div class="event-line"><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b><span>' + esc(eventDates(event)) + '</span>' + action + '</div>';
-        }).join('') +
+        others.map(function (event) { return line(event, false); }).join('') +
+        archived.map(function (event) { return line(event, true); }).join('') +
         '</div></div>';
     }
     host.innerHTML = liveCard + designer + compact;
@@ -512,6 +526,16 @@
       }).catch(function () { button.textContent = url; });
       return;
     }
+    var archiveBtn = e.target.closest('button[data-archive]');
+    if (archiveBtn) {
+      archiveBtn.disabled = true;
+      api('/api/admin/events/archive', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: archiveBtn.dataset.archive, archived: archiveBtn.dataset.archived !== 'no' })
+      }).then(load).catch(function (error) { alert(error.message); archiveBtn.disabled = false; });
+      return;
+    }
     var btn = e.target.closest('button[data-live]');
     if (!btn) return;
     btn.disabled = true;
@@ -529,7 +553,7 @@
     host.innerHTML = state.events.map(function (event) {
       var slug = encodeURIComponent(event.slug);
       var onForm = versionLink('event_day', '/e/' + slug);
-      return '<div class="qr-card"><img alt="On-site QR for ' + esc(event.name) + '" loading="lazy" decoding="async" src="/api/admin/qr/' + slug + '?mount=events">' +
+      return '<div class="qr-card"><div class="qr-ph"><img alt="On-site QR for ' + esc(event.name) + '" loading="lazy" decoding="async" src="/api/admin/qr/' + slug + '?mount=events" onload="this.parentNode.classList.add(\'ready\')"><span>Loading QR</span></div>' +
         '<div><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + '</b>' +
         '<p class="sub">' + (event.active ? 'Open for entries' : 'Not open') + (eventDates(event) ? ' · ' + esc(eventDates(event)) : '') + '</p>' +
         '<p><b>On-site.</b> ' + esc(onForm) + '</p>' +

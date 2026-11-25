@@ -1,5 +1,10 @@
 (function () {
   var ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  var onVirtualSpin = location.pathname.indexOf('/virtual') === 0;
+  if (onVirtualSpin) {
+    var hint = document.getElementById('eventHint');
+    if (hint) hint.textContent = 'Enter the code from your spin link';
+  }
   var wheel = document.getElementById('wheel');
   var panel = document.getElementById('panel');
   var spinBtn = document.getElementById('spinBtn');
@@ -171,7 +176,7 @@
     note.textContent = 'One spin per code. Every spin wins.';
     panel.innerHTML =
       '<div class="kiosk-title">Enter your spin code</div>' +
-      '<p class="kiosk-sub">8 characters from the homeowner’s phone. No O, 0, I, 1 or L.</p>' +
+      '<p class="kiosk-sub">' + (onVirtualSpin ? '8 characters from your spin link. No O, 0, I, 1 or L.' : '8 characters from the homeowner’s phone. No O, 0, I, 1 or L.') + '</p>' +
       '<input id="codeInput" class="code-entry" data-testid="code-input" type="text" inputmode="text" maxlength="24" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-label="Spin code" autofocus>' +
       '<div class="err" id="panelErr" role="alert"></div>' +
       '<button class="go" id="checkBtn" type="button" data-testid="check-code">Check code</button>';
@@ -288,7 +293,9 @@
     $('resBrand').textContent = view.result.brand || '';
     $('resBody').textContent = already
       ? 'No second spin. The prize is already saved against this code.'
-      : 'Your prize is confirmed and recorded, and we’ve emailed you and your interior designer the details. Please check your email for instructions on how to claim it.';
+      : (view.emailStatus === 'sent'
+        ? 'Your prize is confirmed and recorded, and we’ve emailed you and your interior designer the details. Please check your email for instructions on how to claim it.'
+        : 'Your prize is confirmed and recorded. Screenshot this pop-up. Email isn’t sending from this server yet.');
     modal.classList.add('show');
     if (!already) { fanfare(); confetti(); }
     startCountdown(boot.kioskResetSeconds || 120, 'Closing in', $('count'), true);
@@ -381,7 +388,7 @@
       return res.json();
     }).then(function (data) {
       if (!data.event) throw new Error(data.error || 'This screen’s event link is not recognised.');
-      $('eventLabel').innerHTML = esc(data.event.name) + '<small>' + esc(data.event.edition || 'Sure-Win Spin') + ' · big screen</small>';
+      $('eventLabel').innerHTML = esc(data.event.name) + '<small>' + esc(data.event.edition || 'Sure-Win Spin') + (onVirtualSpin ? ' · spin on this phone' : ' · big screen') + '</small>';
       sold = data.soldOut || [];
       SureWinWheel.markSold(wheel, boot.slots, sold);
     }).catch(function (error) {
@@ -440,13 +447,18 @@
   }).catch(function () {});
 
   function openPreset(raw) {
-    code = String(raw || '').toUpperCase().replace(/[\s-]/g, '').split('').filter(function (ch) {
+    var compact = String(raw || '').toUpperCase().replace(/[\s-]/g, '');
+    var bad = compact.split('').some(function (ch) { return ALPHABET.indexOf(ch) < 0; });
+    code = compact.split('').filter(function (ch) {
       return ALPHABET.indexOf(ch) >= 0;
     }).join('').slice(0, 8);
-    if (code.length !== 8) {
+    if (bad || code.length !== 8) {
       document.documentElement.classList.remove('spin-prefilled');
       document.body.classList.remove('spin-prefilled');
       renderCode();
+      var input = $('codeInput');
+      if (input) input.value = compact.slice(0, 24);
+      if ($('panelErr')) $('panelErr').textContent = 'Check the code: 8 characters, no O, 0, I, 1 or L';
       return;
     }
     return api('/api/spin/lookup', { code: code, event: screenEvent }).then(function (view) {

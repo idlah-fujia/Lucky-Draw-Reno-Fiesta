@@ -550,6 +550,38 @@ export class SheetsStore {
     return map.live_event || ''
   }
 
+  async readArchived() {
+    const map = await this.readSettings()
+    try {
+      const parsed = JSON.parse(map.archived_events || '[]')
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+    } catch {
+      return []
+    }
+  }
+
+  async setArchived(slug, archived) {
+    const run = this.eventChain.then(async () => {
+      const map = await this.loadSettings()
+      let list = []
+      try {
+        const parsed = JSON.parse(map.archived_events || '[]')
+        list = Array.isArray(parsed) ? parsed : []
+      } catch {
+        list = []
+      }
+      const set = new Set(list.filter(Boolean))
+      if (archived) set.add(slug)
+      else set.delete(slug)
+      map.archived_events = JSON.stringify([...set])
+      await this.writeSettings(map)
+      this.remember('settings', map)
+      return [...set]
+    })
+    this.eventChain = run.then(() => {}, () => {})
+    return run
+  }
+
   async setLiveSlug(slug) {
     const run = this.eventChain.then(async () => {
       const map = await this.loadSettings()

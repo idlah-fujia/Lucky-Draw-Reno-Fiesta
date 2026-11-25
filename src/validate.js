@@ -16,7 +16,7 @@ export function cleanText(value, { min, max, label }) {
 
 export function normalizePhone(value) {
   let digits = String(value || '').replace(/\D/g, '')
-  if (digits.startsWith('65') && digits.length === 10) digits = digits.slice(2)
+  if (/^65[3689]/.test(digits) && digits.length >= 10) digits = digits.slice(2)
   return digits
 }
 

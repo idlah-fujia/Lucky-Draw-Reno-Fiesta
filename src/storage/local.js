@@ -172,10 +172,11 @@ export class LocalStore {
       const parsed = raw.trim() ? JSON.parse(raw) : {}
       return {
         events: Array.isArray(parsed.events) ? parsed.events : [],
-        live: typeof parsed.live === 'string' ? parsed.live : ''
+        live: typeof parsed.live === 'string' ? parsed.live : '',
+        archived: Array.isArray(parsed.archived) ? parsed.archived : []
       }
     } catch (error) {
-      if (error.code === 'ENOENT') return { events: [], live: '' }
+      if (error.code === 'ENOENT') return { events: [], live: '', archived: [] }
       throw error
     }
   }
@@ -193,6 +194,25 @@ export class LocalStore {
 
   async readLiveSlug() {
     return (await this.readEventFile()).live || ''
+  }
+
+  async readArchived() {
+    const data = await this.readEventFile()
+    return Array.isArray(data.archived) ? data.archived.filter(Boolean) : []
+  }
+
+  async setArchived(slug, archived) {
+    const run = this.eventChain.then(async () => {
+      const data = await this.readEventFile()
+      const set = new Set(Array.isArray(data.archived) ? data.archived : [])
+      if (archived) set.add(slug)
+      else set.delete(slug)
+      data.archived = [...set]
+      await this.writeEventFile(data)
+      return data.archived
+    })
+    this.eventChain = run.then(() => {}, () => {})
+    return run
   }
 
   async updateEvents(fn) {

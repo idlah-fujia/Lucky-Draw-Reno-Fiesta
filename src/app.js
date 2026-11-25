@@ -8,8 +8,8 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import QRCode from 'qrcode'
 import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
 import { findEvent, getConfig, publicEvent } from './config.js'
-import { defaultEvent, eventMode, modeFromMount, modeFromPath, prefixFor, siteMode } from './mode.js'
-import { eventRange, formatEventRange, mergeEvents, normalizeStoredEvent, slugifyEventName, uniqueSlug } from './events.js'
+import { eventMode, modeFromMount, modeFromPath, prefixFor, siteMode } from './mode.js'
+import { eventRange, mergeEvents, normalizeStoredEvent, slugifyEventName } from './events.js'
 import { formatCode, generateCode, parseCode } from './codes.js'
 import { proofPath, validProofSig } from './sign.js'
 import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
@@ -76,27 +76,51 @@ export function createApp(deps) {
   let sharedConfig = null
   let sharedConfigAt = 0
   let sharedConfigFlight = null
+  let configEpoch = 0
   function forgetConfig() {
+    configEpoch += 1
     sharedConfigAt = 0
   }
+  function applyArchived(events, slugs) {
+    const hidden = new Set(slugs || [])
+    return events.map((event) => ({ ...event, archived: hidden.has(event.slug) }))
+  }
+  async function loadSharedConfig() {
+    const base = configOf()
+    const [sheetEvents, liveSlug, archived] = await Promise.all([
+      store.listEvents(),
+      store.readLiveSlug(),
+      store.readArchived()
+    ])
+    const merged = mergeEvents(base.events, sheetEvents, liveSlug)
+    return { ...base, events: applyArchived(merged.events, archived), liveSlug: merged.liveSlug }
+  }
   async function liveConfig() {
-    if (sharedConfig && Date.now() - sharedConfigAt < 20_000) return sharedConfig
-    if (sharedConfigFlight) return sharedConfigFlight
-    sharedConfigFlight = (async () => {
-      try {
-        const base = configOf()
-        const merged = mergeEvents(base.events, await store.listEvents(), await store.readLiveSlug())
-        sharedConfig = { ...base, events: merged.events, liveSlug: merged.liveSlug }
-        sharedConfigAt = Date.now()
-        return sharedConfig
-      } catch (error) {
-        if (sharedConfig && isSheetQuota(error)) return sharedConfig
-        throw error
-      } finally {
-        sharedConfigFlight = null
-      }
-    })()
-    return sharedConfigFlight
+    const fresh = sharedConfig && sharedConfigAt && Date.now() - sharedConfigAt < 20_000
+    if (fresh) return sharedConfig
+    if (!sharedConfigFlight) {
+      const epoch = configEpoch
+      const flight = (async () => {
+        try {
+          const next = await loadSharedConfig()
+          if (epoch !== configEpoch) return null
+          sharedConfig = next
+          sharedConfigAt = Date.now()
+          return sharedConfig
+        } catch (error) {
+          if (sharedConfig && epoch === configEpoch) return sharedConfig
+          if (epoch !== configEpoch) return null
+          throw error
+        } finally {
+          if (sharedConfigFlight === flight) sharedConfigFlight = null
+        }
+      })()
+      sharedConfigFlight = flight
+    }
+    if (sharedConfig && sharedConfigAt) return sharedConfig
+    const loaded = await sharedConfigFlight
+    if (loaded) return loaded
+    return liveConfig()
   }
   const app = new Hono()
 
@@ -135,7 +159,7 @@ export function createApp(deps) {
       invalidResetSeconds: config.invalidResetSeconds || 12,
       idleResetSeconds: config.idleResetSeconds || 90,
       siteMode: fallbackMode(),
-      events: config.events.filter((event) => event.active).map(asPublic),
+      events: config.events.filter((event) => event.active && !event.archived).map(asPublic),
       liveSlug: config.liveSlug || '',
       slots: config.slots
     })
@@ -161,7 +185,7 @@ export function createApp(deps) {
   app.get('/api/events/:slug', async (c) => {
     const config = await liveConfig()
     const event = findEvent(config, c.req.param('slug'))
-    if (!event) throw new HttpError(404, 'That event link is not recognised.')
+    if (!event || event.archived) throw new HttpError(404, 'That event link is not recognised.')
     const list = await store.list()
     return c.json({
       event: asPublic(event),
@@ -292,7 +316,7 @@ export function createApp(deps) {
       firstName: firstName(entry.homeowner_name),
       email: entry.homeowner_email,
       emailStatus: mailed.status,
-      event: asPublic(event),
+      event: asPublic(event, mode),
       mode,
       spinUrl
     })
@@ -303,7 +327,7 @@ export function createApp(deps) {
     const parsed = parseCode(body.code)
     if (parsed.error) throw new HttpError(400, parsed.error)
     const config = await liveConfig()
-    const view = await store.transaction((list) => verifySpinCode(list, parsed.code, body.event, config, { allowAnyEvent: anyEventSpin(c, body) }))
+    const view = await store.transaction((list) => verifySpinCode(list, parsed.code, body.event, config, { allowAnyEvent: anyEventSpin(c, body), afterEvent: modeFromMount(body.mount) === 'after_event' }))
     return c.json(view)
   })
 
@@ -318,7 +342,7 @@ export function createApp(deps) {
       id_company: cleanText(body.id_company, { min: 2, max: 120, label: 'the interior design company' })
     }
     const config = await liveConfig()
-    const entry = await store.transaction((list) => saveDesigner(list, parsed.code, fields, new Date().toISOString(), body.event, { allowAnyEvent: anyEventSpin(c, body) }))
+    const entry = await store.transaction((list) => saveDesigner(list, parsed.code, fields, new Date().toISOString(), body.event, { allowAnyEvent: anyEventSpin(c, body), afterEvent: modeFromMount(body.mount) === 'after_event' }))
     const list = await store.list()
     return c.json(attachSoldOut(kioskView(entry, config), list, config))
   })
@@ -341,7 +365,7 @@ export function createApp(deps) {
       // The store runs this alone: it reloads the sheet or file, checks the
       // code and the iPhone, then saves. The next spin cannot start until
       // that save has finished, so two spins cannot both take the iPhone.
-      const view = verifySpinCode(list, parsed.code, body.event, config, { allowAnyEvent: anyEventSpin(c, body) })
+      const view = verifySpinCode(list, parsed.code, body.event, config, { allowAnyEvent: anyEventSpin(c, body), afterEvent: modeFromMount(body.mount) === 'after_event' })
       const existing = list.find((row) => row.code === parsed.code)
       if (!view.canContinue) {
         if (existing.status === 'voided') {
@@ -359,7 +383,7 @@ export function createApp(deps) {
         throw new HttpError(409, 'The iPhone has been fully redeemed for this event.')
       }
       if (!prize) prize = pickPrize(config, sold)
-      return spinEntry(list, parsed.code, prize, new Date().toISOString(), config, body.event, { allowAnyEvent: anyEventSpin(c, body) })
+      return spinEntry(list, parsed.code, prize, new Date().toISOString(), config, body.event, { allowAnyEvent: anyEventSpin(c, body), afterEvent: modeFromMount(body.mount) === 'after_event' })
     }, { oncePerEventIds: oncePerEventIds(config) })
 
     let emailStatus = outcome.entry.result_email_status || ''
@@ -396,11 +420,19 @@ export function createApp(deps) {
       throw new HttpError(404, 'That file link does not work.')
     }
     const session = readSession(c, fileSecret)
-    if (session) {
-      const users = await store.readUsers()
-      const user = users.find((item) => item.id === session.userId)
-      if (user && user.role !== 'admin') throw new HttpError(403, 'Proof files are for admin accounts.')
+    const accept = c.req.header('accept') || ''
+    const wantsPage = accept.includes('text/html')
+    if (!session) {
+      if (wantsPage) return c.redirect('/admin', 302)
+      throw new HttpError(401, 'Sign in as an admin to open this file.')
     }
+    const users = await store.readUsers()
+    const user = users.find((item) => item.id === session.userId)
+    if (!user) {
+      if (wantsPage) return c.redirect('/admin', 302)
+      throw new HttpError(401, 'Sign in again.')
+    }
+    if (user.role !== 'admin') throw new HttpError(403, 'Proof files are for admin accounts.')
     return sendProof(c, store, files, id)
   })
 
@@ -636,8 +668,13 @@ export function createApp(deps) {
     const name = cleanText(body.name, { min: 2, max: 80, label: 'the event name' })
     const range = eventRange(body)
     const config = await liveConfig()
-    const taken = new Set(config.events.map((event) => event.slug))
-    const slug = uniqueSlug(slugifyEventName(name), taken)
+    const slug = slugifyEventName(name)
+    const wanted = name.trim().toLowerCase()
+    const clash = config.events.find((event) =>
+      String(event.name || '').trim().toLowerCase() === wanted ||
+      String(event.slug || '').toLowerCase() === slug.toLowerCase()
+    )
+    if (clash) throw new HttpError(409, 'That event name is already in use.')
     const now = new Date().toISOString()
     const created = normalizeStoredEvent({
       slug,
@@ -663,6 +700,20 @@ export function createApp(deps) {
       virtualSpinUrl: afterEventSpinUrl(c),
       label: CREATE_EVENT_LABEL
     })
+  })
+
+  app.post('/api/admin/events/archive', async (c) => {
+    requireAdmin(c)
+    const body = await c.req.json().catch(() => ({}))
+    const slug = String(body.slug || '').trim()
+    const archived = body.archived !== false && body.archived !== 'no'
+    const config = await liveConfig()
+    const event = findEvent(config, slug)
+    if (!event) throw new HttpError(404, 'That event was not found.')
+    if (archived && slug === config.liveSlug) throw new HttpError(400, 'The live event can’t be archived. Set another event live first.')
+    await store.setArchived(slug, archived)
+    forgetConfig()
+    return c.json({ ok: true, slug, archived })
   })
 
   app.post('/api/admin/live', async (c) => {
@@ -704,8 +755,8 @@ export function createApp(deps) {
   app.get('/events/after/:slug', showForm)
   app.get('/virtual/spin', showSpin)
   app.get('/virtual/register', showForm)
-  app.get('/virtual/e/:slug', (c) => c.redirect('/virtual', 302))
-  app.get('/virtual/after/:slug', (c) => c.redirect('/virtual', 302))
+  app.get('/virtual/e/:slug', (c) => c.redirect(`/virtual?event=${encodeURIComponent(c.req.param('slug'))}`, 302))
+  app.get('/virtual/after/:slug', (c) => c.redirect(`/virtual?event=${encodeURIComponent(c.req.param('slug'))}`, 302))
   app.get('/register', (c) => c.redirect(`${prefixFor(fallbackMode())}/register`, 302))
   app.get('/spin', (c) => c.redirect(`/events/spin${new URL(c.req.url).search}`, 302))
   app.get('/e/:slug', async (c) => {
@@ -714,7 +765,7 @@ export function createApp(deps) {
     const mode = eventMode(event, fallbackMode())
     return c.redirect(`${prefixFor(mode)}/e/${encodeURIComponent(c.req.param('slug'))}`, 302)
   })
-  app.get('/after/:slug', (c) => c.redirect('/virtual', 302))
+  app.get('/after/:slug', (c) => c.redirect(`/virtual?event=${encodeURIComponent(c.req.param('slug'))}`, 302))
   app.get('/admin', (c) => c.html(readPage('admin.html'), 200, htmlHeaders))
 
   app.use('/css/*', serveStatic({ root: publicDir }))
@@ -746,7 +797,7 @@ function eventForScreen(config, slug) {
   const requested = String(slug || '').trim()
   if (requested) {
     const event = findEvent(config, requested)
-    if (!event) throw new HttpError(404, 'That event link is not recognised.')
+    if (!event || event.archived) throw new HttpError(404, 'That event link is not recognised.')
     return event
   }
   const event = pickLive(config)
@@ -754,12 +805,16 @@ function eventForScreen(config, slug) {
   return event
 }
 
+function openEvent(event) {
+  return event && event.active !== false && !event.archived
+}
+
 function pickLive(config) {
   if (config.liveSlug) {
     const chosen = findEvent(config, config.liveSlug)
-    if (chosen && chosen.active !== false) return chosen
+    if (openEvent(chosen)) return chosen
   }
-  return defaultEvent(config)
+  return (config.events || []).find((event) => openEvent(event)) || null
 }
 
 

@@ -82,6 +82,7 @@ export function publicEvent(event, fallbackMode) {
     ends: normalized.ends || '',
     rangeLabel: formatEventRange(normalized.starts, normalized.ends),
     active: !!normalized.active,
+    archived: !!normalized.archived,
     mode: eventMode(normalized, fallbackMode)
   }
 }
