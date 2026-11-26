@@ -188,8 +188,16 @@
     button.disabled = true;
     button.textContent = 'Saving your entry…';
     data.append('mount', location.pathname.indexOf('/virtual') === 0 ? 'virtual' : 'events')
-    fetch('/api/entries', { method: 'POST', body: data, signal: AbortSignal.timeout(60000) })
-      .then(function (res) {
+    var options = { method: 'POST', body: data };
+    var signal = timeoutSignal(60000);
+    if (signal) options.signal = signal;
+    var pending;
+    try {
+      pending = fetch('/api/entries', options);
+    } catch (error) {
+      pending = Promise.reject(error);
+    }
+    pending.then(function (res) {
         return res.json().catch(function () { return { error: 'Something went wrong.' }; }).then(function (json) {
           if (!res.ok) throw new Error(json.error || 'Something went wrong.');
           return json;
@@ -197,7 +205,8 @@
       })
       .then(showCode)
       .catch(function (error) {
-        setErr(error.name === 'TimeoutError' ? 'This is taking too long. Check your connection. If a code already arrived by email, don’t submit again.' : error.message, 2);
+        var timedOut = error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+        setErr(timedOut ? 'This is taking too long. Check your connection. If a code already arrived by email, don’t submit again.' : ((error && error.message) || 'Something went wrong.'), 2);
         button.disabled = false;
         button.textContent = 'Submit & get my spin code';
       });

@@ -149,12 +149,20 @@
       payload.mount = location.pathname.indexOf('/virtual') === 0 ? 'virtual' : 'events'
       if (payload.mount === 'virtual') delete payload.event
     }
-    return fetch(path, {
+    var options = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(20000)
-    }).then(function (res) {
+      body: JSON.stringify(payload)
+    };
+    var signal = timeoutSignal(20000);
+    if (signal) options.signal = signal;
+    var pending;
+    try {
+      pending = fetch(path, options);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return pending.then(function (res) {
       return res.json().catch(function () { return { error: 'Something went wrong.' }; }).then(function (json) {
         if (!res.ok) {
           var error = new Error(json.error || 'Something went wrong.');
@@ -282,7 +290,21 @@
       if (view.state === 'ready' && view.canContinue === true) return showReady(view);
       showProblem('Code not accepted', 'The server did not confirm this code. Please try again.', true);
     }).catch(function (error) {
-      showProblem(error.status === 404 ? 'Code not recognised' : 'Check that code', error.message, error.status === 404 || error.status === 400 || error.status === 409);
+      var timedOut = error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+      var title = error && error.status === 404 ? 'Code not recognised' : (timedOut ? 'Taking too long' : 'Check that code');
+      var message = timedOut
+        ? 'This is taking too long. Check the connection and try again.'
+        : ((error && error.message) || 'Something went wrong.');
+      try {
+        showProblem(title, message, !!(error && (error.status === 404 || error.status === 400 || error.status === 409)));
+      } catch (again) {
+        var btn = $('checkBtn');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Check code';
+        }
+        if ($('panelErr')) $('panelErr').textContent = message;
+      }
     });
   }
 

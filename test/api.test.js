@@ -879,3 +879,23 @@ test('trial fixes: phones, proof session, event names, archive, and the on-site 
   const bootAgain = await json(await app.request('/api/bootstrap'))
   assert.equal(bootAgain.body.events.some((event) => event.slug === made.body.event.slug), true)
 })
+
+test('fetch timeouts do not require AbortSignal.timeout', () => {
+  const net = fs.readFileSync(new URL('../public/js/net.js', import.meta.url), 'utf8')
+  const kiosk = fs.readFileSync(new URL('../public/js/kiosk.js', import.meta.url), 'utf8')
+  const page = fs.readFileSync(new URL('../public/js/page1.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(kiosk, /AbortSignal\.timeout/)
+  assert.doesNotMatch(page, /AbortSignal\.timeout/)
+  assert.match(kiosk, /timeoutSignal\(20000\)/)
+  assert.match(page, /timeoutSignal\(60000\)/)
+  const missing = { AbortController, setTimeout, AbortSignal: {} }
+  vm.runInNewContext(`${net}\nthis.out = timeoutSignal(5000);`, missing)
+  assert.equal(typeof missing.out.aborted, 'boolean')
+  const throwing = {
+    AbortController,
+    setTimeout,
+    AbortSignal: { timeout() { throw new TypeError('AbortSignal.timeout is not a function'); } }
+  }
+  vm.runInNewContext(`${net}\nthis.out = timeoutSignal(5000);`, throwing)
+  assert.equal(typeof throwing.out.aborted, 'boolean')
+})
