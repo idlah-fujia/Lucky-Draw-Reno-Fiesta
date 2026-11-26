@@ -70,6 +70,11 @@ function smtpTransport(port, secure) {
   })
 }
 
+function smtpTimedOut(error) {
+  const text = String(error && (error.message || error.code) || error)
+  return /timeout|ETIMEDOUT|ESOCKET/i.test(text)
+}
+
 async function sendSmtp(message) {
   const mail = {
     from: fromAddress(),
@@ -81,6 +86,7 @@ async function sendSmtp(message) {
   try {
     await smtpTransport(465, true).sendMail(mail)
   } catch (primary) {
+    if (smtpTimedOut(primary)) throw primary
     try {
       await smtpTransport(587, false).sendMail(mail)
     } catch (fallback) {
@@ -159,9 +165,20 @@ export function createMailer(dir) {
           await deliver(message)
           record.status = 'sent'
         } catch (error) {
-          record.status = 'failed'
-          record.error = String(error && error.message ? error.message : error).slice(0, 500)
-          console.error('Email failed', message.to, record.error)
+          if (mailMode() === 'smtp' && gmailApiConfigured()) {
+            try {
+              await sendGmail(message)
+              record.status = 'sent'
+              record.error = ''
+            } catch (gmailError) {
+              record.error = `SMTP: ${String(error && error.message ? error.message : error).slice(0, 240)}; Gmail API: ${String(gmailError && gmailError.message ? gmailError.message : gmailError).slice(0, 240)}`
+              console.error('Email failed', message.to, record.error)
+            }
+          } else {
+            record.status = 'failed'
+            record.error = String(error && error.message ? error.message : error).slice(0, 500)
+            console.error('Email failed', message.to, record.error)
+          }
         }
       } else {
         console.log(`[email not configured] To ${message.to} — ${message.subject}`)

@@ -392,8 +392,7 @@ export function createApp(deps) {
         ? afterEventSpinUrl(c, outcome.entry.code)
         : linkFor(c, 'event_day', outcome.entry.event_slug, 'spin')
       const messages = resultEmails({ entry: outcome.entry, spinUrl, whatsapp: config.whatsapp })
-      const results = []
-      for (const message of messages) results.push(await mailer.send(message))
+      const results = await Promise.all(messages.map((message) => mailer.send(message)))
       emailStatus = results.every((item) => item.status === 'sent')
         ? 'sent'
         : results.some((item) => item.status === 'failed')
