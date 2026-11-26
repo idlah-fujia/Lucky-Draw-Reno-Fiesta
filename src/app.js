@@ -9,7 +9,7 @@ import QRCode from 'qrcode'
 import { HttpError, rateLimit, requestBaseUrl, todaySGT } from './http.js'
 import { findEvent, getConfig, publicEvent } from './config.js'
 import { eventMode, modeFromMount, modeFromPath, prefixFor, siteMode } from './mode.js'
-import { eventRange, mergeEvents, normalizeStoredEvent, slugifyEventName } from './events.js'
+import { eventRange, mergeEvents, normalizeStoredEvent, renocodeCode, slugifyEventName } from './events.js'
 import { formatCode, generateCode, parseCode } from './codes.js'
 import { proofPath, validProofSig } from './sign.js'
 import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
@@ -22,6 +22,7 @@ import { toCsv, versionLabel } from './schema.js'
 import { versionRoots } from './hosts.js'
 import { isSheetQuota } from './storage/sheets.js'
 import { GLOBAL_EVENT, QR_LIMITS, clampSize, envKioskQr, normalizeSaved, parsePosition, resolveKioskQr } from './kioskQr.js'
+import { UNAVAILABLE_MESSAGE, checkAfterEventAttendance, messageForReason, renocodeStatus } from './renocode.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const publicDir = path.join(root, 'public')
@@ -33,9 +34,11 @@ function readPage(name) {
 
 export function createApp(deps) {
   const { store, files, mailer, adminPassword, fileSecret, allowForcePrize = false } = deps
+  const checkAttendance = deps.checkAttendance || checkAfterEventAttendance
   const configOf = deps.getConfig || getConfig
   const fallbackMode = () => deps.siteMode || siteMode()
   const asPublic = (event, fallback) => publicEvent(event, fallback || fallbackMode())
+  const asAdmin = (event, fallback) => ({ ...asPublic(event, fallback), renocodeCode: String(event.renocode_code || '').trim() })
   function hintedMode(c, hint) {
     return modeFromPath(c.req.path) || modeFromMount(hint) || modeFromMount(c.req.query('mount')) || fallbackMode()
   }
@@ -147,7 +150,8 @@ export function createApp(deps) {
     storage: store.mode,
     siteMode: fallbackMode(),
     email: mailer.mode,
-    files: files.mode
+    files: files.mode,
+    renocode: renocodeStatus()
   }))
 
   app.get('/api/bootstrap', async (c) => {
@@ -229,6 +233,21 @@ export function createApp(deps) {
     const filename = safeFilename(file.name)
     await files.save(id, { buffer, contentType: mime })
 
+    const afterEvent = modeFromMount(body.mount) === 'after_event'
+    let attendance = { action: 'allow' }
+    if (afterEvent) {
+      try {
+        attendance = await checkAttendance(event, phone, true)
+      } catch (error) {
+        console.error('Renocode attendance check failed', error?.code || 'error')
+        attendance = { action: 'unavailable' }
+      }
+      if (attendance.action === 'unavailable') {
+        await files.remove(id).catch(() => {})
+        throw new HttpError(503, UNAVAILABLE_MESSAGE)
+      }
+    }
+
     let entry
     try {
       const outcome = await store.transaction((list) => {
@@ -280,6 +299,13 @@ export function createApp(deps) {
           site_mode: hintedMode(c, body.mount) === 'after_event' ? 'after_event' : eventMode(event, hintedMode(c, body.mount)),
           spam_at: '',
           spam_by: ''
+        }
+        if (attendance.action === 'block') {
+          row.code = ''
+          row.status = 'not_attended'
+          list.push(row)
+          console.info(`attendance blocked ${row.id} ${attendance.reason || 'not_attended'}`)
+          return { blocked: true, message: messageForReason(attendance.reason) }
         }
         try {
           return { blocked: false, entry: createEntry(list, row) }
@@ -566,7 +592,7 @@ export function createApp(deps) {
     }
     return c.json({
       entries: list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
-      events: config.events.map(asPublic),
+      events: config.events.map(asAdmin),
       liveSlug: config.liveSlug || '',
       hosts: versionRoots(requestBaseUrl(c)),
       storage: store.mode
@@ -697,7 +723,8 @@ export function createApp(deps) {
       edition: '',
       active: true,
       created_at: now,
-      created_by: actor.email
+      created_by: actor.email,
+      renocode_code: renocodeCode(body.renocodeCode || body.renocode_code || '')
     })
     await store.updateEvents(async (events) => {
       if (events.some((event) => event.slug === slug)) throw new HttpError(409, 'That event name is already in use.')
@@ -705,13 +732,44 @@ export function createApp(deps) {
     })
     forgetConfig()
     return c.json({
-      event: asPublic(created, 'event_day'),
+      event: asAdmin(created, 'event_day'),
       formUrl: linkFor(c, 'event_day', slug, 'form'),
       spinUrl: linkFor(c, 'event_day', slug, 'spin'),
       virtualFormUrl: afterEventFormUrl(c),
       virtualSpinUrl: afterEventSpinUrl(c),
       label: CREATE_EVENT_LABEL
     })
+  })
+
+  app.post('/api/admin/events/renocode', async (c) => {
+    requireAdmin(c)
+    const body = await c.req.json().catch(() => ({}))
+    const slug = String(body.slug || '').trim()
+    const code = renocodeCode(body.code ?? body.renocodeCode ?? '')
+    const config = await liveConfig()
+    const event = findEvent(config, slug)
+    if (!event) throw new HttpError(404, 'That event was not found.')
+    await store.updateEvents(async (events) => {
+      const existing = events.find((item) => item.slug === slug)
+      if (existing) {
+        existing.renocode_code = code
+        return
+      }
+      events.push(normalizeStoredEvent({
+        slug: event.slug,
+        name: event.name,
+        starts: event.starts,
+        ends: event.ends,
+        date: event.date || event.starts || '',
+        edition: event.edition || '',
+        active: event.active !== false,
+        created_at: event.created_at || new Date().toISOString(),
+        created_by: event.created_by || '',
+        renocode_code: code
+      }))
+    })
+    forgetConfig()
+    return c.json({ ok: true, slug, renocodeCode: code })
   })
 
   app.post('/api/admin/events/archive', async (c) => {

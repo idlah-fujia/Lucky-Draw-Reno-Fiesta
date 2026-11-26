@@ -51,6 +51,7 @@
         <label class="fl"><span>Event name</span><input id="newEventName" required></label>
         <label class="fl"><span>Start date</span><input id="newEventStart" type="date" required></label>
         <label class="fl"><span>End date</span><input id="newEventEnd" type="date" required></label>
+        <label class="fl"><span>Renocode event code (optional)</span><input id="newEventRenocode" placeholder="RF33" maxlength="20" autocomplete="off"></label>
         <div class="err" id="newEventErr" role="alert"></div>
         <button class="go" type="submit">Create</button>
         <button class="mini" id="cancelEventBtn" type="button">Cancel</button>
@@ -106,6 +107,7 @@
         <option value="voided">Voided</option>
         <option value="spam">Spam</option>
         <option value="duplicate">Duplicate pair</option>
+        <option value="not_attended">Not attended</option>
       </select>
       <a class="mini ok" id="csvLink" data-admin-only href="/api/admin/entries.csv">Download CSV</a>
       <button class="mini" id="reloadBtn" type="button">Refresh</button>
@@ -163,6 +165,6 @@
     </section>
   </div>
 </div>
-<script src="/js/admin.js?v=20261126led7"></script>
+<script src="/js/admin.js?v=20261126reno1"></script>
 </body>
 </html>

@@ -235,9 +235,12 @@ Leave `PUBLIC_BASE_URL` blank on the first deploy. The app uses Render’s `REND
 
 Optional, so the LED QR keeps its size after a free-plan restart when Google Sheets is not connected: `KIOSK_QR_SIZE` and `KIOSK_QR_POSITION`. See “LED screen QR size and position”.
 
+After-event `/virtual` entries can be checked against Renocode attendance. On each event, an admin can save an optional Renocode event code such as `RF33`. It is stored in the Events sheet. With no code, the entry is accepted and the event row says “No Renocode code: attendance not checked”. With a code, the homeowner’s mobile must match an arrived attendee who is not marked scammer. On-site `/events` is not checked.
+
 Optional, add in the Render dashboard when you have them. Leave them empty for the trial:
 
 - `EMAIL_FROM`, `RESEND_API_KEY`, or `SMTP_USER` + `SMTP_PASS`, or `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN`
+- `RENOCODE_SUPABASE_URL`, `RENOCODE_SUPABASE_KEY` (GET only; the key is never logged)
 - `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
 

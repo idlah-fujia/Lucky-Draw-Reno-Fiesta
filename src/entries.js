@@ -20,10 +20,10 @@ export function pairPhones(entry) {
   }
 }
 
-/** Voided, spam, and logged duplicate attempts do not hold the pair. */
+/** Voided, spam, and logged blocked attempts do not hold the pair. */
 export function countsAsPair(row) {
   if (!row) return false
-  if (row.status === 'voided' || row.status === 'spam' || row.status === 'duplicate') return false
+  if (row.status === 'voided' || row.status === 'spam' || row.status === 'duplicate' || row.status === 'not_attended') return false
   if (row.voided_at || row.spam_at) return false
   return true
 }

@@ -1,7 +1,7 @@
 import { HttpError } from './http.js'
 import { normalizeHeader } from './sheetHeader.js'
 
-export const EVENT_COLUMNS = ['slug', 'name', 'starts', 'ends', 'edition', 'active', 'created_at', 'created_by']
+export const EVENT_COLUMNS = ['slug', 'name', 'starts', 'ends', 'edition', 'active', 'created_at', 'created_by', 'renocode_code']
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -50,11 +50,22 @@ export function eventRange(body = {}) {
   return { starts, ends, date: String(body.date || starts) }
 }
 
+/** Optional Renocode event code such as RF33. Blank means attendance is not checked. */
+export function renocodeCode(value) {
+  const code = String(value || '').trim().toUpperCase()
+  if (!code) return ''
+  if (!/^[A-Z0-9][A-Z0-9-]{1,19}$/.test(code)) {
+    throw new HttpError(400, 'Use a Renocode event code such as RF33.')
+  }
+  return code
+}
+
 export function normalizeStoredEvent(event = {}) {
   const legacy = String(event.date || '').trim()
   const starts = String(event.starts || legacy || '').trim()
   const ends = String(event.ends || starts || '').trim()
-  return { ...event, date: legacy || starts, starts, ends }
+  const renocode = String(event.renocode_code || event.renocodeCode || '').trim().toUpperCase()
+  return { ...event, date: legacy || starts, starts, ends, renocode_code: renocode }
 }
 
 /**
@@ -64,10 +75,10 @@ export function normalizeStoredEvent(event = {}) {
 export function eventSheetColumns(header) {
   const names = normalizeHeader(header)
   if (!names.length) return EVENT_COLUMNS.slice()
-  if (names.includes('starts') && names.includes('ends')) return names
   const next = names.slice()
   if (!next.includes('starts')) next.push('starts')
   if (!next.includes('ends')) next.push('ends')
+  if (!next.includes('renocode_code')) next.push('renocode_code')
   return next
 }
 
@@ -87,7 +98,8 @@ export function eventFromCells(header, row) {
     active: cell.active !== 'no',
     created_at: cell.created_at || '',
     created_by: cell.created_by || '',
-    mode: cell.mode || ''
+    mode: cell.mode || '',
+    renocode_code: cell.renocode_code || ''
   })
 }
 
@@ -126,7 +138,17 @@ export function formatEventRange(starts, ends) {
 }
 
 export function mergeEvents(configEvents, sheetEvents, liveSlug) {
-  const events = (configEvents || []).map((event) => normalizeStoredEvent({ ...event }))
+  const sheetBySlug = new Map()
+  for (const event of sheetEvents || []) {
+    const normalized = normalizeStoredEvent(event)
+    if (normalized?.slug) sheetBySlug.set(normalized.slug, normalized)
+  }
+  const events = (configEvents || []).map((event) => {
+    const normalized = normalizeStoredEvent({ ...event })
+    const sheet = sheetBySlug.get(normalized.slug)
+    if (sheet) normalized.renocode_code = sheet.renocode_code || ''
+    return normalized
+  })
   const taken = new Set(events.map((event) => event.slug))
   for (const event of sheetEvents || []) {
     const normalized = normalizeStoredEvent(event)

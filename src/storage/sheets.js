@@ -607,6 +607,7 @@ function eventCell(event, column) {
   if (column === 'created_at') return normalized.created_at || ''
   if (column === 'created_by') return normalized.created_by || ''
   if (column === 'mode') return normalized.mode || ''
+  if (column === 'renocode_code') return normalized.renocode_code || ''
   const value = normalized[column]
   return value == null ? '' : String(value)
 }

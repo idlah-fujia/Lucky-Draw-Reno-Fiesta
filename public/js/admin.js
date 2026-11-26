@@ -93,7 +93,8 @@
       body: JSON.stringify({
         name: document.getElementById('newEventName').value,
         starts: starts,
-        ends: ends
+        ends: ends,
+        renocodeCode: document.getElementById('newEventRenocode').value
       })
     }).then(function (created) {
       document.getElementById('createEventForm').reset();
@@ -381,7 +382,7 @@
         '<td data-label="Homeowner"><b>' + esc(row.homeowner_name) + '</b><br>' + esc(row.homeowner_phone) + '<br>' + esc(row.homeowner_email) + '</td>' +
         '<td data-label="Designer" data-testid="row-designer"><b>' + esc(row.designer_name || '—') + '</b><br>' + esc(row.designer_phone || '') + '<br>' + esc(row.id_company || '') + '</td>' +
         '<td data-label="Code"><b data-testid="row-code">' + esc(row.code) + '</b></td>' +
-        '<td data-label="Status"><span class="pill ' + esc(row.status) + '" data-testid="row-status">' + esc(row.status === 'duplicate' ? 'Duplicate pair' : row.status) + '</span></td>' +
+        '<td data-label="Status"><span class="pill ' + esc(row.status) + '" data-testid="row-status">' + esc(row.status === 'duplicate' ? 'Duplicate pair' : row.status === 'not_attended' ? 'Not attended' : row.status) + '</span></td>' +
         '<td data-label="Prize">' + esc(row.prize_label || '—') + '</td>' +
         '<td data-label="Proof">' + (row.proof_link ? '<a href="' + esc(row.proof_link) + '" target="_blank" rel="noopener">Open file</a>' : '—') + '</td>' +
         '<td data-label="Actions" class="row-actions">' + actions + ' <button class="mini" data-act="toggle" data-id="' + row.id + '">Details</button></td>' +
@@ -448,6 +449,16 @@
     return from.day + ' ' + month + ' ' + from.year + '–' + to.day + ' ' + endMonth + ' ' + to.year;
   }
 
+  function renocodeBits(event) {
+    var code = event.renocodeCode || '';
+    var note = code
+      ? '<p class="sub">Renocode ' + esc(code) + '</p>'
+      : '<p class="sub" data-testid="renocode-missing" style="color:#9F1239;font-weight:800">No Renocode code: attendance not checked</p>';
+    var adminUser = state.session && state.session.role === 'admin';
+    if (!adminUser) return note;
+    return note + '<p><input data-renocode-for="' + esc(event.slug) + '" value="' + esc(code) + '" placeholder="RF33" aria-label="Renocode event code for ' + esc(event.name) + '" maxlength="20" style="max-width:8rem"> <button class="mini" type="button" data-renocode-save="' + esc(event.slug) + '">Save code</button></p>';
+  }
+
   function renderEventQrs() {
     var host = document.getElementById('eventQrList');
     var admin = state.session && state.session.role === 'admin';
@@ -461,7 +472,7 @@
       var onForm = (hostFor('event_day') || '/events').replace(/\/$/, '');
       liveCard = '<div class="event-qr live" data-testid="event-qr-row"><img alt="On-site QR for ' + esc(live.name) + '" src="/api/admin/qr/on-site">' +
         '<div><b>' + esc(live.name) + (live.edition ? ' · ' + esc(live.edition) : '') + '</b> <span class="live-now" data-testid="live-event">LIVE NOW</span>' +
-        '<p class="sub">' + esc(eventDates(live)) + '</p>' +
+        '<p class="sub">' + esc(eventDates(live)) + '</p>' + renocodeBits(live) +
         '<p><b>On-site.</b> <a href="' + esc(onSpin) + '">Big screen</a> · <a href="' + esc(onForm) + '">Phone form</a></p>' +
         '<p class="break-url">' + esc(onForm) + '</p></div></div>';
     }
@@ -486,7 +497,7 @@
         var action = '';
         if (admin && !hidden) action += '<button class="mini" type="button" data-live="' + esc(event.slug) + '">Set as live</button>';
         if (admin) action += '<button class="mini" type="button" data-archive="' + esc(event.slug) + '" data-archived="' + (hidden ? 'no' : 'yes') + '">' + (hidden ? 'Unarchive' : 'Archive') + '</button>';
-        return '<div class="event-line"><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + (hidden ? ' · archived' : '') + '</b><span>' + esc(eventDates(event)) + '</span><span class="event-line-actions">' + action + '</span></div>';
+        return '<div class="event-line"><b>' + esc(event.name) + (event.edition ? ' · ' + esc(event.edition) : '') + (hidden ? ' · archived' : '') + '</b><span>' + esc(eventDates(event)) + '</span>' + renocodeBits(event) + '<span class="event-line-actions">' + action + '</span></div>';
       }
       compact = '<div class="other-events" data-testid="other-events">' + picker +
         '<span class="other-actions">' + setBtn +
@@ -524,6 +535,18 @@
       navigator.clipboard.writeText(url).then(function () {
         button.textContent = 'Copied';
       }).catch(function () { button.textContent = url; });
+      return;
+    }
+    var saveCode = e.target.closest('button[data-renocode-save]');
+    if (saveCode) {
+      var slug = saveCode.getAttribute('data-renocode-save');
+      var input = document.querySelector('input[data-renocode-for="' + slug + '"]');
+      saveCode.disabled = true;
+      api('/api/admin/events/renocode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: slug, code: input ? input.value : '' })
+      }).then(load).catch(function (error) { alert(error.message); saveCode.disabled = false; });
       return;
     }
     var archiveBtn = e.target.closest('button[data-archive]');

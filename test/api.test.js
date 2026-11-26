@@ -12,6 +12,7 @@ import { LocalFiles } from '../src/files.js'
 import { todaySGT } from '../src/http.js'
 import { formatCode } from '../src/codes.js'
 import { normalizePhone } from '../src/validate.js'
+import { NOT_ATTENDED_MESSAGE, NO_CHECKIN_MESSAGE, UNAVAILABLE_MESSAGE, renocodeStatus } from '../src/renocode.js'
 import { envKioskQr } from '../src/kioskQr.js'
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
@@ -63,7 +64,8 @@ async function build(options = {}) {
     adminPassword: 'test-password-1',
     fileSecret: 'test-secret',
     allowForcePrize: true,
-    siteMode: options.siteMode
+    siteMode: options.siteMode,
+    checkAttendance: options.checkAttendance
   })
   const { ensureBootstrapAdmin } = await import('../src/users.js')
   await ensureBootstrapAdmin(store, { email: 'admin@renofiesta.sg', password: 'test-password-1', name: 'Admin' })
@@ -811,7 +813,7 @@ test('one homeowner can submit with each designer, and the same pair is blocked 
   assert.match(across.body.error, /already spun with this designer/i)
 
   const legacyHeader = ['slug', 'name', 'date', 'edition', 'active', 'created_at', 'created_by']
-  assert.deepEqual(eventSheetColumns(legacyHeader), [...legacyHeader, 'starts', 'ends'])
+  assert.deepEqual(eventSheetColumns(legacyHeader), [...legacyHeader, 'starts', 'ends', 'renocode_code'])
   const legacyRow = ['old-fest', 'Old Fest', '2026-11-27', '', 'yes', '', '']
   assert.equal(eventNeedsDateBackfill(legacyHeader, legacyRow), true)
   const legacy = eventFromCells(legacyHeader, legacyRow)
@@ -914,6 +916,84 @@ test('fetch timeouts do not require AbortSignal.timeout', () => {
   }
   vm.runInNewContext(`${net}\nthis.out = timeoutSignal(5000);`, throwing)
   assert.equal(typeof throwing.out.aborted, 'boolean')
+})
+
+test('after-event spins check Renocode attendance and on-site spins do not', async () => {
+  const calls = []
+  const { app, store, sent } = await build({
+    checkAttendance: async (event, phone, afterEvent) => {
+      calls.push({ code: event.renocode_code || '', phone, afterEvent })
+      if (!afterEvent || !event.renocode_code) return { action: 'allow' }
+      if (phone.endsWith('1111')) return { action: 'block', reason: 'not_attended' }
+      if (phone.endsWith('2222')) return { action: 'block', reason: 'no_checkin' }
+      if (phone.endsWith('3333')) return { action: 'unavailable' }
+      return { action: 'allow' }
+    }
+  })
+  const health = await json(await app.request('/api/health'))
+  assert.equal(health.body.renocode, renocodeStatus())
+  const login = await app.request('/api/admin/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@renofiesta.sg', password: 'test-password-1' })
+  })
+  const cookie = login.headers.get('set-cookie').split(';')[0]
+  const saved = await json(await app.request('/api/admin/events/renocode', {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'reno-fiesta-nov-2026', code: 'rf33' })
+  }))
+  assert.equal(saved.status, 200, saved.body.error)
+  assert.equal(saved.body.renocodeCode, 'RF33')
+  const listed = await json(await app.request('/api/admin/entries', { headers: { cookie } }))
+  const shown = listed.body.events.find((event) => event.slug === 'reno-fiesta-nov-2026')
+  assert.equal(shown.renocodeCode, 'RF33')
+  const publicEvents = await json(await app.request('/api/bootstrap'))
+  assert.equal(publicEvents.body.events[0].renocodeCode, undefined)
+
+  const missed = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ mount: 'virtual', homeowner_phone: '81231111', homeowner_email: 'miss@example.com', designer_phone: '62341111', designer_email: 'd-miss@example.com' })
+  }))
+  assert.equal(missed.status, 409)
+  assert.equal(missed.body.error, NOT_ATTENDED_MESSAGE)
+  const quiet = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ mount: 'virtual', homeowner_phone: '81232222', homeowner_email: 'quiet@example.com', designer_phone: '62342222', designer_email: 'd-quiet@example.com' })
+  }))
+  assert.equal(quiet.status, 409)
+  assert.equal(quiet.body.error, NO_CHECKIN_MESSAGE)
+  const down = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ mount: 'virtual', homeowner_phone: '81233333', homeowner_email: 'down@example.com', designer_phone: '62343333', designer_email: 'd-down@example.com' })
+  }))
+  assert.equal(down.status, 503)
+  assert.equal(down.body.error, UNAVAILABLE_MESSAGE)
+  const rows = await store.list()
+  const blocked = rows.filter((row) => row.status === 'not_attended')
+  assert.equal(blocked.length, 2)
+  assert.equal(blocked.every((row) => row.code === ''), true)
+  assert.equal(rows.some((row) => row.homeowner_phone === '81233333'), false)
+  assert.equal(sent.records.length, 0)
+
+  const onSite = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ mount: 'events', homeowner_phone: '81231111', homeowner_email: 'onsite-attend@example.com', designer_phone: '62344444', designer_email: 'd-onsite@example.com' })
+  }))
+  assert.equal(onSite.status, 200, onSite.body.error)
+  const allowed = await json(await app.request('/api/entries', {
+    method: 'POST',
+    body: entryForm({ mount: 'virtual', homeowner_phone: '81235555', homeowner_email: 'ok-attend@example.com', designer_phone: '62345555', designer_email: 'd-ok@example.com' })
+  }))
+  assert.equal(allowed.status, 200, allowed.body.error)
+  assert.equal(calls.some((call) => call.afterEvent && call.code === 'RF33' && call.phone === '81235555'), true)
+  assert.equal(calls.some((call) => call.phone === '81231111' && call.afterEvent === false), false)
+  const loggedOut = await app.request('/api/admin/events/renocode', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'reno-fiesta-nov-2026', code: 'RF99' })
+  })
+  assert.equal(loggedOut.status, 401)
 })
 
 test('the spin tick and fanfare go through a unity master gain', () => {
