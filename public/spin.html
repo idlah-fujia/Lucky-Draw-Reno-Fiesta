@@ -15,35 +15,43 @@
 </head>
 <body class="kiosk">
 <div class="kiosk-scroll" id="kioskScroll">
-  <div class="led-tools">
-    <button class="tool" id="fullBtn" type="button">Fill the screen</button>
-    <button class="tool" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
-    <span class="top-help">Help · WhatsApp <a id="waLink" href="https://wa.me/6588949268" target="_blank" rel="noopener">8894 9268</a></span>
-  </div>
-  <div class="led-column">
-    <img class="led-logo" src="/img/rf-logo.png" alt="Reno Fiesta">
-    <div class="kiosk-event" id="eventLabel">Sure-Win Spin<small id="eventHint">Enter the code from the homeowner’s phone</small></div>
-    <section class="kiosk-qr" id="kioskQr" data-position="top-center" data-testid="kiosk-qr">
-      <div class="kiosk-qr-card">
-        <img id="kioskQrImg" alt="QR code. Scan to register for your spin" width="960" height="960">
-        <p id="kioskQrCaption">Scan to register for your spin</p>
+  <div class="led-board">
+    <div class="led-tools">
+      <button class="tool" id="fullBtn" type="button">Fill the screen</button>
+      <button class="tool" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
+      <span class="top-help">Help · WhatsApp <a id="waLink" href="https://wa.me/6588949268" target="_blank" rel="noopener">8894 9268</a></span>
+    </div>
+    <div class="led-head">
+      <img class="led-logo" src="/img/rf-logo.png" alt="Reno Fiesta">
+      <div class="kiosk-event" id="eventLabel">Sure-Win Spin<small id="eventHint">Enter the code from the homeowner’s phone</small></div>
+    </div>
+    <div class="led-play">
+      <div class="led-side">
+        <section class="kiosk-qr" id="kioskQr" data-position="top-center" data-testid="kiosk-qr">
+          <div class="kiosk-qr-card">
+            <img id="kioskQrImg" alt="QR code. Scan to register for your spin" width="960" height="960">
+            <p id="kioskQrCaption">Scan to register for your spin</p>
+          </div>
+        </section>
+        <section class="kiosk-panel" id="panel" aria-live="polite"></section>
       </div>
-    </section>
-    <section class="kiosk-panel" id="panel" aria-live="polite"></section>
-    <section class="kiosk-stage stage" id="stage">
-      <div class="wheel-box">
-        <div class="wheel-glow"></div>
-        <svg class="pointer" viewBox="0 0 54 64" aria-hidden="true"><path d="M27 62 L4 14 A25 25 0 1 1 50 14 Z" fill="#FFD23F" stroke="#fff" stroke-width="4" stroke-linejoin="round"></path><circle cx="27" cy="22" r="8" fill="#E90B01"></circle></svg>
-        <div class="wheel" id="wheel"></div>
-        <div class="lock" id="lock"><div><b>🔒</b>Enter a spin code to unlock</div></div>
-      </div>
-      <button class="spin-btn" id="spinBtn" type="button" disabled>Spin locked</button>
-      <div class="stage-note" id="stageNote">One spin per code. Every spin wins.</div>
-      <div class="prizes">
-        <figure><img src="/img/iphone-duo.webp" alt="iPhone Duo"><figcaption>iPhone Duo</figcaption></figure>
-        <figure><img src="/img/iphone-18-pro-max.webp" alt="iPhone 18 Pro Max"><figcaption>iPhone 18 Pro Max</figcaption></figure>
-      </div>
-    </section>
+      <section class="kiosk-stage stage" id="stage">
+        <div class="wheel-slot">
+          <div class="wheel-box">
+            <div class="wheel-glow"></div>
+            <svg class="pointer" viewBox="0 0 54 64" aria-hidden="true"><path d="M27 62 L4 14 A25 25 0 1 1 50 14 Z" fill="#FFD23F" stroke="#fff" stroke-width="4" stroke-linejoin="round"></path><circle cx="27" cy="22" r="8" fill="#E90B01"></circle></svg>
+            <div class="wheel" id="wheel"></div>
+            <div class="lock" id="lock"><div><b>🔒</b>Enter a spin code to unlock</div></div>
+          </div>
+        </div>
+        <button class="spin-btn" id="spinBtn" type="button" disabled>Spin locked</button>
+        <div class="stage-note" id="stageNote">One spin per code. Every spin wins.</div>
+        <div class="prizes">
+          <figure><img src="/img/iphone-duo.webp" alt="iPhone Duo"><figcaption>iPhone Duo</figcaption></figure>
+          <figure><img src="/img/iphone-18-pro-max.webp" alt="iPhone 18 Pro Max"><figcaption>iPhone 18 Pro Max</figcaption></figure>
+        </div>
+      </section>
+    </div>
   </div>
 </div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="resTitle">

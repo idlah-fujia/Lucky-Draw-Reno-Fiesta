@@ -177,9 +177,11 @@
     panel.innerHTML =
       '<div class="kiosk-title">Enter your spin code</div>' +
       '<p class="kiosk-sub">' + (onVirtualSpin ? '8 characters from your spin link. No O, 0, I, 1 or L.' : '8 characters from the homeowner’s phone. No O, 0, I, 1 or L.') + '</p>' +
+      '<div class="code-row">' +
       '<input id="codeInput" class="code-entry" data-testid="code-input" type="text" inputmode="text" maxlength="24" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-label="Spin code" autofocus>' +
-      '<div class="err" id="panelErr" role="alert"></div>' +
-      '<button class="go" id="checkBtn" type="button" data-testid="check-code">Check code</button>';
+      '<button class="go" id="checkBtn" type="button" data-testid="check-code">Check code</button>' +
+      '</div>' +
+      '<div class="err" id="panelErr" role="alert"></div>';
     var input = $('codeInput');
     input.addEventListener('input', function () { applyCodeInput(input); });
     input.addEventListener('keydown', function (e) {
