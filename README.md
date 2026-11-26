@@ -137,14 +137,14 @@ Set both on the Render service if you want a restart to keep a size when Sheets 
 
 Signup emails the homeowner the code and the big-screen link. After the spin, the homeowner and the designer both get the prize and a short summary (names, numbers, company, address, code). A failed email never blocks the signup or the spin.
 
-To actually send mail, use [Resend](https://resend.com):
+The default sender is `IDLah Sure-Win <idlah.logistics@gmail.com>`. Change it with `EMAIL_FROM`. The first configured transport is used:
 
-1. Create an account and add the domain the mail should come from. Resend shows DNS records; whoever manages the domain adds them.
-2. Create an API key.
-3. In `.env` set `RESEND_API_KEY` and `EMAIL_FROM`, for example `IDLah Sure-Win <spin@idlah.sg>`.
-4. Restart the server. Submit a test entry and check the inbox. The admin outbox shows `sent` or the error.
+1. **Resend**, when `RESEND_API_KEY` is set.
+2. **Gmail SMTP** (`smtp.gmail.com`, port 465 SSL, then 587 STARTTLS) when `SMTP_USER` and `SMTP_PASS` are set. `SMTP_PASS` is a Google app password, not the Gmail login password.
+3. **Gmail API** over HTTPS when `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, and `GMAIL_REFRESH_TOKEN` are set. Use this on Render’s free plan, which blocks outbound ports 465 and 587.
+4. **Log only**, when none of those are set. The message is saved in the admin outbox.
 
-Leave `RESEND_API_KEY` blank and nothing is sent. The code is still on screen, in the CSV or Sheet, and in the outbox.
+Admins can send a test from the Email outbox card. The iPhone prize is a 1% chance on every spin. Once it has been won for an event, that 1% is added to the Grab vouchers.
 
 ## Google Sheets
 
@@ -237,7 +237,7 @@ Optional, so the LED QR keeps its size after a free-plan restart when Google She
 
 Optional, add in the Render dashboard when you have them. Leave them empty for the trial:
 
-- `RESEND_API_KEY`, `EMAIL_FROM`
+- `EMAIL_FROM`, `RESEND_API_KEY`, or `SMTP_USER` + `SMTP_PASS`, or `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN`
 - `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
 

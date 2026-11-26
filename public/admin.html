@@ -146,7 +146,7 @@
       </section>
       <section class="card" id="oddsCard" data-admin-only>
         <h2>Prize odds</h2>
-        <p class="sub">From <code>config/spin.config.json</code>. These are placeholders until the team sets the real weights. The iPhone can be won once per event.</p>
+        <p class="sub">The iPhone is a 1% chance, once per event. If it has already been won, that 1% moves to the Grab vouchers. Every other prize keeps the same odds relative to the others.</p>
         <label class="fl" style="margin-top:10px"><span>Show odds for</span><select id="oddsEvent"></select></label>
         <table class="odds" id="odds"></table>
       </section>
@@ -154,10 +154,15 @@
     <section class="card" id="outboxCard" data-admin-only style="margin-top:16px">
       <h2>Email outbox</h2>
       <p class="sub" id="mailMode"></p>
+      <form class="f" id="mailTestForm" style="margin:12px 0">
+        <label class="fl"><span>Send a test to</span><input id="mailTestTo" type="email" required placeholder="name@example.com"></label>
+        <button class="mini ok" id="mailTestBtn" type="submit">Send test email</button>
+        <p class="sub" id="mailTestResult"></p>
+      </form>
       <div class="outbox" id="outbox"></div>
     </section>
   </div>
 </div>
-<script src="/js/admin.js"></script>
+<script src="/js/admin.js?v=20261126led7"></script>
 </body>
 </html>

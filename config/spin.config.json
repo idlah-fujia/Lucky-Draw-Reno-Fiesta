@@ -32,18 +32,18 @@
   ],
   "prizes": [
     { "id": "FP40", "brand": "FairPrice", "label": "$40 FairPrice voucher", "weight": 50 },
-    { "id": "GRAB40", "brand": "Grab", "label": "$40 Grab voucher", "weight": 50 },
+    { "id": "GRAB40", "brand": "Grab", "label": "$40 Grab voucher", "weight": 50.9709107524 },
     { "id": "FP60", "brand": "FairPrice", "label": "$60 FairPrice voucher", "weight": 28 },
-    { "id": "GRAB60", "brand": "Grab", "label": "$60 Grab voucher", "weight": 28 },
+    { "id": "GRAB60", "brand": "Grab", "label": "$60 Grab voucher", "weight": 28.5437100213 },
     { "id": "FP80", "brand": "FairPrice", "label": "$80 FairPrice voucher", "weight": 16 },
-    { "id": "GRAB80", "brand": "Grab", "label": "$80 Grab voucher", "weight": 16 },
+    { "id": "GRAB80", "brand": "Grab", "label": "$80 Grab voucher", "weight": 16.3106914408 },
     { "id": "IKEA100", "brand": "IKEA", "label": "$100 IKEA gift card", "weight": 12 },
     { "id": "FP100", "brand": "FairPrice", "label": "$100 FairPrice voucher", "weight": 8 },
-    { "id": "GRAB100", "brand": "Grab", "label": "$100 Grab voucher", "weight": 8 },
+    { "id": "GRAB100", "brand": "Grab", "label": "$100 Grab voucher", "weight": 8.1553457204 },
     { "id": "IKEA200", "brand": "IKEA", "label": "$200 IKEA gift card", "weight": 5 },
     { "id": "DYSON_CV", "brand": "Dyson", "label": "Dyson cordless car vacuum", "weight": 4 },
     { "id": "DYSON_SS", "brand": "Dyson", "label": "Dyson Supersonic hair dryer", "weight": 3 },
-    { "id": "IPHONE", "brand": "Apple", "label": "iPhone Duo or iPhone 18 Pro Max", "weight": 1, "oncePerEvent": true }
+    { "id": "IPHONE", "brand": "Apple", "label": "iPhone Duo or iPhone 18 Pro Max", "weight": 8.806122448979592, "oncePerEvent": true }
   ],
   "slots": [
     "GRAB80", "IKEA100", "FP80", "GRAB40", "IKEA100", "FP60", "GRAB60", "FP40",

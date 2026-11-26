@@ -174,7 +174,9 @@ body.kiosk{height:100vh;height:100dvh;overflow:hidden;background:radial-gradient
 .kiosk .wheel{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%}
 html.spin-prefilled .led-side,body.spin-prefilled .led-side{display:none}
 html.spin-prefilled .led-play,body.spin-prefilled .led-play{width:100%;max-width:none;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
-.kiosk .spin-btn{min-width:0;width:42vw;max-width:420px;height:6vh;min-height:44px;margin:0;font-size:2vh;flex-shrink:0}
+.kiosk .spin-btn.hub-spin{position:absolute;left:50%;top:50%;z-index:5;width:38%;height:38%;min-width:88px;min-height:88px;margin:0;padding:8px;border-radius:50%;display:none;align-items:center;justify-content:center;font-size:2.2vh;line-height:1.05;text-align:center;transform:translate(-50%,-50%)}
+.kiosk .spin-btn.hub-spin.ready{display:flex;animation:hubpulse 1.6s ease-in-out infinite}
+@keyframes hubpulse{50%{transform:translate(-50%,-50%) scale(1.08)}}
 .kiosk .stage-note{margin:0;font-size:1.6vh;text-align:center}
 .kiosk .prizes{display:none}
 .kiosk-title{font-size:clamp(16px,2.3vh,26px);font-weight:900;letter-spacing:-.03em;line-height:1.1}

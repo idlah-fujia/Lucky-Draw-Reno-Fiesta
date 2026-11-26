@@ -180,6 +180,7 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   assert.equal(lookup.body.state, 'ready')
   assert.equal(lookup.body.canContinue, true)
   assert.equal(lookup.body.firstName, 'Mei')
+  assert.equal(lookup.body.homeownerName, 'Mei Lin Tan')
   assert.equal(lookup.body.designer.name, 'Alicia Ong')
   assert.equal(lookup.body.homeowner_phone, undefined)
 
@@ -191,6 +192,7 @@ test('submit, designer, one spin, then the same code shows the prize', async () 
   assert.equal(spun.body.result.prizeId, 'GRAB40')
   assert.equal(spun.body.result.slot >= 0, true)
   assert.equal(spun.body.already, false)
+  assert.equal(spun.body.homeownerName, 'Mei Lin Tan')
   assert.equal(sent.records.length, 4)
   assert.equal(sent.records.filter((record) => record.to === 'alicia@studio.example').length, 1)
   assert.equal(sent.records.filter((record) => record.to === 'mei@example.com').length, 2)
@@ -564,6 +566,20 @@ test('staff can verify but cannot export, void, change settings, or open proof f
   assert.equal(odds.status, 403)
   const outbox = await app.request('/api/admin/outbox', { headers: { cookie: staffCookie } })
   assert.equal(outbox.status, 403)
+  const mailDenied = await app.request('/api/admin/email-test', {
+    method: 'POST',
+    headers: { cookie: staffCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ to: 'person@example.com' })
+  })
+  assert.equal(mailDenied.status, 403)
+  const mailLogged = await json(await app.request('/api/admin/email-test', {
+    method: 'POST',
+    headers: { cookie: adminCookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ to: 'person@example.com' })
+  }))
+  assert.equal(mailLogged.status, 200, mailLogged.body.error)
+  assert.equal(mailLogged.body.mode, 'log')
+  assert.equal(mailLogged.body.status, 'logged')
   const entry = list.body.entries.find((row) => row.code === created.body.code)
   const verified = await json(await app.request(`/api/admin/entries/${entry.id}`, {
     method: 'POST',

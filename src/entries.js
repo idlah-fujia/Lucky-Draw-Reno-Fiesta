@@ -168,6 +168,7 @@ export function kioskView(entry, config) {
   const base = {
     code: entry.code,
     firstName: firstName(entry.homeowner_name),
+    homeownerName: entry.homeowner_name || '',
     eventName: entry.event_name,
     eventSlug: entry.event_slug,
     eventEdition: entry.event_edition || ''

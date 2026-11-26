@@ -18,17 +18,36 @@ export function soldOutIds(list, eventSlug, config) {
  * on more slices is more likely. Sold-out prizes (weight 0 or once-per-event
  * already won) are left off.
  */
-export function pickPrize(config, soldOut, rng = Math.random) {
+function isGrab(id) {
+  return String(id || '').startsWith('GRAB')
+}
+
+/** Live slices. A sold-out iPhone's tickets are added to the Grab slices. */
+export function wheelTickets(config, soldOut = []) {
   const sold = new Set(soldOut || [])
   const prizes = prizeMap(config)
-  const available = []
+  const rows = []
   config.slots.forEach((id, slot) => {
     const prize = prizes.get(id)
-    if (!prize || sold.has(id)) return
+    if (!prize) return
     const weight = Number(prize.weight) || 0
     if (weight <= 0) return
-    available.push({ slot, prize, weight })
+    rows.push({ slot, id, prize, weight })
   })
+  const iphoneTickets = rows.filter((row) => row.id === 'IPHONE').reduce((sum, row) => sum + row.weight, 0)
+  const available = rows.filter((row) => !sold.has(row.id)).map((row) => ({ ...row }))
+  if (sold.has('IPHONE') && iphoneTickets > 0) {
+    const grabs = available.filter((row) => isGrab(row.id))
+    const grabSum = grabs.reduce((sum, row) => sum + row.weight, 0)
+    if (grabSum > 0) {
+      for (const row of grabs) row.weight += iphoneTickets * (row.weight / grabSum)
+    }
+  }
+  return available
+}
+
+export function pickPrize(config, soldOut, rng = Math.random) {
+  const available = wheelTickets(config, soldOut)
   if (!available.length) {
     const error = new Error('No prizes are left on the wheel.')
     error.status = 409
@@ -73,7 +92,10 @@ export function oddsTable(config, soldOut = []) {
     const row = tally.get(id)
     if (!row) continue
     row.slices += 1
-    if (row.available) row.tickets += row.weight
+  }
+  for (const slice of wheelTickets(config, soldOut)) {
+    const row = tally.get(slice.id)
+    if (row) row.tickets += slice.weight
   }
   const total = [...tally.values()].reduce((sum, row) => sum + row.tickets, 0)
   return [...tally.values()].map((row) => {

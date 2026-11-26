@@ -169,7 +169,7 @@
       el.textContent = 'Entries are being written to the Google Sheet. Proof files: ' + state.session.files + '. Email: ' + state.session.mail + '.';
     } else {
       el.className = 'banner local';
-      el.textContent = 'Google Sheets is not connected, so entries are in the spreadsheet file data/entries.csv on this server. Connect a sheet with the steps in the README when you’re ready. Email: ' + (state.session.mail === 'resend' ? 'Resend' : 'not configured — messages stay in the outbox below') + '.';
+      el.textContent = 'Google Sheets is not connected, so entries are in the spreadsheet file data/entries.csv on this server. Connect a sheet with the steps in the README when you’re ready. Email: ' + mailLabel(state.session.mail) + '.';
     }
     line.textContent = 'Status moves from submitted → spun → verified. Void blocks a code from spinning.';
   }
@@ -573,10 +573,20 @@
     });
   }
 
+  function mailLabel(mode) {
+    if (mode === 'resend') return 'Resend';
+    if (mode === 'smtp') return 'Gmail SMTP';
+    if (mode === 'gmail') return 'Gmail API';
+    return 'not configured — messages stay in the outbox below';
+  }
   function renderOutbox(data) {
-    document.getElementById('mailMode').textContent = data.mode === 'resend'
-      ? 'Resend is on. Recent messages:'
-      : 'Resend is not configured. These messages were saved here instead of being sent:';
+    var modeLine = {
+      resend: 'Resend is on. Recent messages:',
+      smtp: 'Gmail SMTP is on (smtp.gmail.com). Recent messages:',
+      gmail: 'Gmail API is on. Recent messages:',
+      log: 'No email transport is configured. These messages were saved here instead of being sent:'
+    };
+    document.getElementById('mailMode').textContent = modeLine[data.mode] || modeLine.log;
     var host = document.getElementById('outbox');
     if (!data.records.length) { host.innerHTML = '<p class="sub">No messages yet.</p>'; return; }
     host.innerHTML = data.records.map(function (record) {
@@ -597,6 +607,26 @@
       }).join('');
     });
   }
+
+  var mailTestForm = document.getElementById('mailTestForm');
+  if (mailTestForm) mailTestForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var button = document.getElementById('mailTestBtn');
+    var result = document.getElementById('mailTestResult');
+    result.textContent = 'Sending…';
+    button.disabled = true;
+    api('/api/admin/email-test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: document.getElementById('mailTestTo').value })
+    }).then(function (data) {
+      var line = data.status === 'sent' ? 'Sent' : (data.status === 'logged' ? 'Saved in the outbox (nothing was emailed)' : 'Not sent');
+      result.textContent = line + ' via ' + mailLabel(data.mode) + (data.error ? '. ' + data.error : '.');
+      return api('/api/admin/outbox').then(renderOutbox);
+    }).catch(function (error) {
+      result.textContent = error.message;
+    }).finally(function () { button.disabled = false; });
+  });
 
   document.getElementById('accountForm').addEventListener('submit', function (e) {
     e.preventDefault();

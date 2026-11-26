@@ -15,7 +15,7 @@ import { proofPath, validProofSig } from './sign.js'
 import { oddsTable, pickPrize, prizeMap, soldOutIds } from './prizes.js'
 import { attachSoldOut, createEntry, firstName, kioskView, reviewEntry, saveDesigner, spinEntry, verifySpinCode } from './entries.js'
 import { MAX_PROOF_BYTES, cleanText, emailAddress, eventDate, homeownerPhone, designerPhone, isUuid, requireYes, safeFilename, sniffProof } from './validate.js'
-import { codeEmail, resultEmails } from './email.js'
+import { codeEmail, mailMode, resultEmails } from './email.js'
 import { adminCookieHeader, readSession, sessionToken } from './auth.js'
 import { assertUserChange, hashPassword, normalizeEmail, publicUser, verifyPassword } from './users.js'
 import { toCsv, versionLabel } from './schema.js'
@@ -596,7 +596,7 @@ export function createApp(deps) {
     requireAdmin(c)
     const records = await mailer.recent(50)
     return c.json({
-      mode: mailer.mode,
+      mode: mailMode(),
       records: records.map((record) => ({
         id: record.id,
         at: record.at,
@@ -607,6 +607,19 @@ export function createApp(deps) {
         text: record.text || ''
       }))
     })
+  })
+
+  app.post('/api/admin/email-test', async (c) => {
+    requireAdmin(c)
+    const body = await c.req.json().catch(() => ({}))
+    const to = emailAddress(body.to, 'an email address')
+    const record = await mailer.send({
+      to,
+      subject: 'Sure-Win Spin test email',
+      text: 'This is a test from the Sure-Win Spin admin page. If you can read it, outbound email from this server is working.',
+      html: '<p>This is a test from the Sure-Win Spin admin page. If you can read it, outbound email from this server is working.</p>'
+    })
+    return c.json({ ok: record.status === 'sent' || record.status === 'logged', status: record.status, error: record.error || '', mode: mailMode(), to })
   })
 
   app.post('/api/admin/entries/:id', async (c) => {
@@ -884,6 +897,12 @@ export function describeRuntime({ store, files, mailer }) {
     ? `Google Sheet ${process.env.GOOGLE_SHEETS_ID}`
     : `local spreadsheet ${path.resolve(process.env.DATA_DIR || './data', 'entries.csv')}`
   const proofs = files.mode === 'r2' ? `R2 bucket ${process.env.R2_BUCKET}` : 'data/uploads on this computer'
-  const email = mailer.mode === 'resend' ? 'Resend' : 'not configured (saved to the admin outbox)'
+  const email = mailer.mode === 'resend'
+    ? 'Resend'
+    : mailer.mode === 'smtp'
+      ? 'Gmail SMTP'
+      : mailer.mode === 'gmail'
+        ? 'Gmail API'
+        : 'not configured (saved to the admin outbox)'
   return { storage, proofs, email }
 }

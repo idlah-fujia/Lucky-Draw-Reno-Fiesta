@@ -119,6 +119,40 @@
       if (spinning) requestAnimationFrame(frame);
     })();
   }
+  function speakWin(name, prize) {
+    if (muted || !name || !prize) return;
+    if (!window.speechSynthesis || typeof window.SpeechSynthesisUtterance !== 'function') return;
+    setTimeout(function () {
+      if (muted || !window.speechSynthesis) return;
+      try {
+        var text = 'Congratulations to ' + name + ' for winning ' + prize;
+        var utterance = new window.SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95;
+        utterance.volume = 1;
+        var voices = [];
+        try { voices = window.speechSynthesis.getVoices() || []; } catch (e) { voices = []; }
+        var pick = null;
+        var prefs = ['en-SG', 'en-GB', 'en-US'];
+        var i;
+        var j;
+        for (i = 0; i < prefs.length && !pick; i++) {
+          for (j = 0; j < voices.length; j++) {
+            var lang = String(voices[j].lang || '').replace('_', '-').toLowerCase();
+            if (lang.indexOf(prefs[i].toLowerCase()) === 0) { pick = voices[j]; break; }
+          }
+        }
+        if (!pick) {
+          for (j = 0; j < voices.length; j++) {
+            if (String(voices[j].lang || '').toLowerCase().indexOf('en') === 0) { pick = voices[j]; break; }
+          }
+        }
+        if (pick) utterance.voice = pick;
+        utterance.lang = pick && pick.lang ? pick.lang : 'en-SG';
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {}
+    }, 1800);
+  }
   function confetti() {
     var c = document.createElement('div');
     c.className = 'confetti';
@@ -179,8 +213,9 @@
   }
   function setSpin(ready, label) {
     spinBtn.disabled = !ready;
-    spinBtn.className = ready ? 'spin-btn ready' : 'spin-btn';
+    spinBtn.className = ready ? 'spin-btn hub-spin ready' : 'spin-btn hub-spin';
     spinBtn.textContent = label;
+    spinBtn.style.display = ready ? 'flex' : 'none';
   }
 
   function api(path, body) {
@@ -236,10 +271,9 @@
     box.style.width = '1px';
     box.style.height = '1px';
     var side = document.querySelector('.led-side');
-    var btn = $('spinBtn');
     var noteEl = $('stageNote');
     var sideBottom = side ? side.getBoundingClientRect().bottom : vh * 0.35;
-    var tail = (btn ? btn.offsetHeight : 48) + (noteEl ? noteEl.offsetHeight : 20) + 28;
+    var tail = (noteEl ? noteEl.offsetHeight : 20) + 28;
     var remain = vh - sideBottom - tail;
     var want = Math.round(vw * (portrait ? 0.85 : 0.6));
     if (portrait && remain < want) {
@@ -252,7 +286,7 @@
     if (!portrait) {
       var stage = document.querySelector('.kiosk-stage');
       var stageRoom = stage ? Math.min(stage.clientWidth, stage.clientHeight) : vh * 0.6;
-      var usedTail = (btn ? btn.offsetHeight : 48) + (noteEl ? noteEl.offsetHeight : 20) + 16;
+      var usedTail = (noteEl ? noteEl.offsetHeight : 20) + 16;
       size = Math.round(Math.max(160, Math.min(stageRoom - usedTail, vh * 0.72)));
     }
     box.style.width = size + 'px';
@@ -376,7 +410,7 @@
       '<div class="verified"><div>Wheel unlocked for <b>' + esc(view.firstName) + '</b>' +
       (who ? '<br>' + who : '') + '</div></div>' +
       '<div class="kiosk-title" style="margin-top:16px">Press Spin now</div>' +
-      '<p class="kiosk-sub">The button is under the wheel. One spin, then the screen resets for the next homeowner.</p></div>';
+      '<p class="kiosk-sub">The button is in the centre of the wheel. One spin, then the screen resets for the next homeowner.</p></div>';
     armIdle();
   }
 
@@ -395,9 +429,10 @@
   function openResult(view, already) {
     mode = 'result';
     clearTimers();
+    var spokenName = view.homeownerName || view.firstName || '';
     $('resKicker').textContent = already
       ? 'Already used'
-      : (view.firstName ? 'Congratulations, ' + view.firstName + '!' : 'Congratulations!');
+      : (spokenName ? 'Congratulations, ' + spokenName + '!' : 'Congratulations!');
     var label = view.result.label || '';
     $('resTitle').textContent = already
       ? 'This code won ' + (label.charAt(0) === '$' ? 'a ' : 'the ') + label
@@ -409,7 +444,11 @@
         ? 'Your prize is confirmed and recorded, and we’ve emailed you and your interior designer the details. Please check your email for instructions on how to claim it.'
         : 'Your prize is confirmed and recorded. Screenshot this pop-up. Email isn’t sending from this server yet.');
     modal.classList.add('show');
-    if (!already) { fanfare(); confetti(); }
+    if (!already) {
+      fanfare();
+      confetti();
+      speakWin(view.homeownerName || view.firstName, label);
+    }
     startCountdown(boot.kioskResetSeconds || 120, 'Closing in', $('count'), true);
   }
 

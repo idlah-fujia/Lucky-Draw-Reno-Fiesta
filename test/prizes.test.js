@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { pickPrize, oddsTable, soldOutIds } from '../src/prizes.js'
+import { getConfig } from '../src/config.js'
 import { parseCode, generateCode, ALPHABET } from '../src/codes.js'
 import { toCsv } from '../src/schema.js'
 
@@ -33,6 +34,26 @@ test('iphone slice is excluded once it is sold out', () => {
   const odds = oddsTable(config, ['IPHONE'])
   assert.equal(odds.find((row) => row.id === 'IPHONE').available, false)
   assert.equal(odds.find((row) => row.id === 'GRAB40').percent, '100.00')
+})
+
+test('the iPhone is 1 percent and that chance moves to Grab when it is sold out', () => {
+  const live = getConfig()
+  const open = oddsTable(live, [])
+  const closed = oddsTable(live, ['IPHONE'])
+  const iphone = open.find((row) => row.id === 'IPHONE')
+  assert.ok(Math.abs(iphone.chance - 0.01) <= 0.0001, `iPhone chance ${iphone.chance}`)
+  assert.equal(closed.find((row) => row.id === 'IPHONE').available, false)
+  const grab = (rows) => rows.filter((row) => row.id.startsWith('GRAB')).reduce((sum, row) => sum + row.chance, 0)
+  const fixed = open.filter((row) => row.id !== 'IPHONE' && !row.id.startsWith('GRAB'))
+  for (const row of fixed) {
+    const after = closed.find((item) => item.id === row.id)
+    assert.ok(Math.abs(after.chance - row.chance) <= 0.0001, `${row.id} moved`)
+  }
+  assert.ok(Math.abs(grab(closed) - (grab(open) + iphone.chance)) <= 0.0001)
+  for (let i = 0; i < 40; i += 1) {
+    const drawn = pickPrize(live, ['IPHONE'], Math.random)
+    assert.notEqual(drawn.id, 'IPHONE')
+  }
 })
 
 test('a voided iphone does not count as sold out', () => {

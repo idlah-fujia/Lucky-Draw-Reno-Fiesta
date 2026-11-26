@@ -1,15 +1,147 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import nodemailer from 'nodemailer'
 import { formatCode } from './codes.js'
 
+export function fromAddress() {
+  return process.env.EMAIL_FROM || 'IDLah Sure-Win <idlah.logistics@gmail.com>'
+}
+
+export function smtpConfigured() {
+  return !!(process.env.SMTP_USER && process.env.SMTP_PASS)
+}
+
+export function gmailApiConfigured() {
+  return !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN)
+}
+
 export function emailConfigured() {
-  return !!process.env.RESEND_API_KEY
+  return !!(process.env.RESEND_API_KEY || smtpConfigured() || gmailApiConfigured())
+}
+
+export function mailMode() {
+  if (process.env.RESEND_API_KEY) return 'resend'
+  if (smtpConfigured()) return 'smtp'
+  if (gmailApiConfigured()) return 'gmail'
+  return 'log'
+}
+
+function fetchWithTimeout(url, options, ms) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer))
+}
+
+async function deliver(message) {
+  const mode = mailMode()
+  if (mode === 'resend') return sendResend(message)
+  if (mode === 'smtp') return sendSmtp(message)
+  if (mode === 'gmail') return sendGmail(message)
+}
+
+async function sendResend(message) {
+  const response = await fetchWithTimeout('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: fromAddress(),
+      to: [message.to],
+      subject: message.subject,
+      html: message.html,
+      text: message.text
+    })
+  }, 10000)
+  if (!response.ok) throw new Error((await response.text()).slice(0, 500) || `Resend HTTP ${response.status}`)
+}
+
+function smtpTransport(port, secure) {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000
+  })
+}
+
+async function sendSmtp(message) {
+  const mail = {
+    from: fromAddress(),
+    to: message.to,
+    subject: message.subject,
+    text: message.text,
+    html: message.html
+  }
+  try {
+    await smtpTransport(465, true).sendMail(mail)
+  } catch (primary) {
+    try {
+      await smtpTransport(587, false).sendMail(mail)
+    } catch (fallback) {
+      throw new Error(`SMTP 465: ${primary.message}; SMTP 587: ${fallback.message}`)
+    }
+  }
+}
+
+function encodeRfc822(message) {
+  const from = fromAddress()
+  const lines = [
+    `From: ${from}`,
+    `To: ${message.to}`,
+    `Subject: ${message.subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/alternative; boundary="surewin"',
+    '',
+    '--surewin',
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    message.text || '',
+    '--surewin',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    message.html || '',
+    '--surewin--',
+    ''
+  ]
+  return Buffer.from(lines.join('\r\n')).toString('base64url')
+}
+
+async function sendGmail(message) {
+  const tokenResponse = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GMAIL_CLIENT_ID,
+      client_secret: process.env.GMAIL_CLIENT_SECRET,
+      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    })
+  }, 10000)
+  const tokenBody = await tokenResponse.json().catch(() => ({}))
+  if (!tokenResponse.ok || !tokenBody.access_token) {
+    throw new Error(tokenBody.error_description || tokenBody.error || `Gmail token HTTP ${tokenResponse.status}`)
+  }
+  const response = await fetchWithTimeout('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${tokenBody.access_token}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ raw: encodeRfc822(message) })
+  }, 10000)
+  if (!response.ok) throw new Error((await response.text()).slice(0, 500) || `Gmail HTTP ${response.status}`)
 }
 
 export function createMailer(dir) {
   const file = path.join(dir, 'outbox.json')
   return {
-    mode: emailConfigured() ? 'resend' : 'log',
+    get mode() { return mailMode() },
     file,
     async send(message) {
       const record = {
@@ -19,37 +151,17 @@ export function createMailer(dir) {
         subject: message.subject,
         text: message.text,
         html: message.html,
-        status: emailConfigured() ? 'failed' : 'logged',
+        status: mailMode() === 'log' ? 'logged' : 'failed',
         error: ''
       }
-      if (emailConfigured()) {
+      if (mailMode() !== 'log') {
         try {
-          const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-              'content-type': 'application/json'
-            },
-            body: JSON.stringify({
-              from: process.env.EMAIL_FROM || 'IDLah Sure-Win <spin@example.com>',
-              to: [message.to],
-              subject: message.subject,
-              html: message.html,
-              text: message.text
-            }),
-            signal: AbortSignal.timeout(8000)
-          })
-          if (response.ok) {
-            record.status = 'sent'
-          } else {
-            record.status = 'failed'
-            record.error = (await response.text()).slice(0, 500)
-            console.error('Email failed', message.to, record.error)
-          }
+          await deliver(message)
+          record.status = 'sent'
         } catch (error) {
           record.status = 'failed'
-          record.error = error.message
-          console.error('Email failed', message.to, error.message)
+          record.error = String(error && error.message ? error.message : error).slice(0, 500)
+          console.error('Email failed', message.to, record.error)
         }
       } else {
         console.log(`[email not configured] To ${message.to} — ${message.subject}`)
