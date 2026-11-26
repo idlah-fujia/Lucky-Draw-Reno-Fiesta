@@ -197,7 +197,7 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .kiosk .lock{display:flex;align-items:center;justify-content:center}
 .kiosk .lock div{width:210px;max-width:72%;min-width:0;white-space:normal;text-align:center;padding:10px 12px;font-size:15px;line-height:1.3}
 .kiosk .lock div b{display:block;font-size:1.15em;margin-bottom:2px}
-.kiosk .pointer{width:14%;height:auto;top:-5%}
+.kiosk .pointer{width:54px;height:64px;top:0}
 .kiosk .go{height:64px;font-size:18px;margin-top:12px}
 .verified{display:flex;gap:12px;align-items:center;background:#EFFBF4;border:1.5px solid rgba(25,179,107,.45);border-radius:16px;padding:12px 14px;margin:12px 0;font-weight:800}
 .verified b{color:#0E7A45}
