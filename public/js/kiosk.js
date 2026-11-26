@@ -186,33 +186,26 @@
       img.style.objectFit = 'contain';
     }
     paintQr(qr);
-    var tools = document.querySelector('.led-tools');
-    var head = document.querySelector('.led-head');
+    box.style.width = '10px';
+    box.style.height = '10px';
+    var slot = document.querySelector('.wheel-slot');
     var side = document.querySelector('.led-side');
-    var btn = $('spinBtn');
-    var noteEl = $('stageNote');
-    function tall(el) { return el ? el.offsetHeight : 0; }
-    function avail() {
-      var chrome = tall(tools) + tall(head) + (portrait ? tall(side) : 0) + tall(btn) + tall(noteEl) + 24;
-      return vh - chrome;
+    function room() {
+      if (!slot) return vh * 0.4;
+      return Math.min(slot.clientWidth || vw, slot.clientHeight || 0);
     }
     var floor = Math.round(vw * 0.5);
-    if (portrait) {
-      var room = avail();
-      if (room < floor) {
-        paintQr(Math.max(96, qr - (floor - room)));
-        room = avail();
-      }
-      var size = Math.min(Math.round(vw * 0.78), room);
-      if (size < floor) size = Math.min(floor, room);
-      size = Math.round(Math.max(120, size));
-      box.style.width = size + 'px';
-      box.style.height = size + 'px';
-    } else {
-      var sizeLand = Math.round(Math.max(120, Math.min(avail(), vw - (side ? side.offsetWidth : 0) - 32)));
-      box.style.width = sizeLand + 'px';
-      box.style.height = sizeLand + 'px';
+    if (portrait && room() < floor) {
+      paintQr(Math.max(96, Math.round(qr - (floor - room()))));
     }
+    var fit = room();
+    var size = portrait
+      ? Math.min(Math.round(vw * 0.78), fit)
+      : Math.min(fit, vw - (side ? side.offsetWidth : 0) - 24);
+    if (portrait && size < floor) size = Math.min(floor, fit);
+    size = Math.round(Math.max(120, size));
+    box.style.width = size + 'px';
+    box.style.height = size + 'px';
     box.style.maxWidth = 'none';
     box.style.maxHeight = 'none';
   }
