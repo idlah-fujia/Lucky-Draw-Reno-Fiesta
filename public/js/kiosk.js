@@ -403,7 +403,7 @@
     clearTimers();
     unlockWheel();
     setSpin(true, 'Spin now');
-    note.textContent = '1 spin only. Every spin wins.';
+    note.textContent = 'One spin per code. Every spin wins.';
     var who = view.designer ? esc(view.designer.name) + ' · ' + esc(view.designer.company) : '';
     panel.innerHTML =
       '<div class="ready-copy" data-testid="wheel-unlocked"><img class="done-otter" src="/img/otter-6.webp" alt="">' +
