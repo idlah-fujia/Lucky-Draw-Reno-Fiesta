@@ -99,7 +99,7 @@ label.fl input[readonly]{background:#FFF8F1;color:var(--ink)}
 .wheel{position:absolute;inset:0;border-radius:50%;box-shadow:0 24px 50px rgba(120,60,20,.25);will-change:transform}
 .wheel svg{width:100%;height:100%;display:block}
 .pointer{position:absolute;left:50%;top:-18px;transform:translateX(-50%);width:54px;height:64px;z-index:3;filter:drop-shadow(0 6px 10px rgba(0,0,0,.4))}
-.lock{position:absolute;inset:0;border-radius:50%;background:rgba(255,248,241,.28);display:grid;place-items:center;z-index:2;transition:opacity .4s}
+.lock{position:absolute;top:0;right:0;bottom:0;left:0;border-radius:50%;background:rgba(255,248,241,.28);display:flex;align-items:center;justify-content:center;z-index:2;transition:opacity .4s}
 .lock div{background:rgba(255,255,255,.96);color:var(--ink);border:1.5px solid var(--or);box-shadow:0 10px 30px rgba(0,0,0,.15);border-radius:18px;padding:14px 18px;max-width:74%;font-weight:800;font-size:15px;line-height:1.35}
 .lock div b{display:block;font-size:26px;margin-bottom:4px}
 .unlocked .lock{opacity:0;visibility:hidden;pointer-events:none}
@@ -147,14 +147,14 @@ body.kiosk{height:100vh;height:100dvh;overflow:hidden;background:radial-gradient
 .led-tools .tool{height:36px;min-height:36px;padding:0 10px;font-size:12px}
 .led-tools .top-help{font-size:12px;white-space:nowrap}
 .led-head{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0}
-.led-logo{height:clamp(32px,6vh,72px);width:auto;display:block}
-.led-play{min-height:0;min-width:0;width:min(86vw,40vh,920px);height:100%;margin:0 auto;display:grid;grid-template-rows:auto minmax(0,1fr);gap:clamp(6px,1.2vh,12px);align-items:stretch;justify-items:stretch}
+.led-logo{height:6vh;width:auto;display:block}
+.led-play{min-height:0;min-width:0;width:85vw;max-width:none;height:100%;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:8px}
 .led-side{min-width:0;min-height:0;max-height:100%;display:flex;flex-direction:column;gap:clamp(6px,1vh,10px);overflow:hidden}
 .kiosk-event{text-align:center;flex:0 0 auto}
 .kiosk-qr,#kioskQr.kiosk-qr,#panel.kiosk-panel{width:100% !important;max-width:none;align-self:stretch;flex:0 0 auto}
 .kiosk-qr{display:flex;padding:0;justify-content:center}
 .kiosk-qr-card{background:#fff;color:#000;border-radius:18px;padding:clamp(6px,1vh,12px);border:1px solid var(--line);box-shadow:0 12px 32px rgba(27,15,51,.12);text-align:center;width:100%;box-sizing:border-box}
-.kiosk-qr-card img{width:200px;height:200px;max-width:70%;object-fit:contain;object-position:center;display:block;margin:0 auto;background:#fff;image-rendering:pixelated}
+.kiosk-qr-card img{width:32vw;height:32vw;max-width:none;object-fit:contain;object-position:center;display:block;margin:0 auto;background:#fff;image-rendering:pixelated}
 .kiosk-qr-card img:not([src]){visibility:hidden}
 .kiosk-qr-card p{margin-top:4px;font-weight:900;font-size:clamp(13px,1.7vh,18px);letter-spacing:0;line-height:1.2;color:#000;white-space:nowrap}
 .kiosk-shell{height:auto;min-height:100dvh;display:grid;grid-template-rows:auto 1fr;padding:10px 18px 14px}
@@ -168,13 +168,14 @@ body.kiosk{height:100vh;height:100dvh;overflow:hidden;background:radial-gradient
 .kiosk-panel{background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:0 12px 32px rgba(120,60,20,.12);padding:16px 18px 14px;overflow:visible;min-height:0;display:flex;flex-direction:column;box-sizing:border-box}
 .ready-copy{margin:auto 0;text-align:center}
 .ready-copy .kiosk-sub{margin-left:auto;margin-right:auto}
-.kiosk-stage{min-height:0;min-width:0;width:100%;display:grid;grid-template-rows:minmax(0,1fr) auto auto;justify-items:center;align-items:center;gap:clamp(2px,.6vh,8px)}
-.wheel-slot{min-width:0;min-height:0;width:100%;height:100%;display:block;text-align:center}
-.kiosk .wheel-box{width:62vw;height:62vw;max-width:70vh;max-height:70vh;margin:0 auto;position:relative}
+.kiosk-stage{min-height:0;min-width:0;width:100%;height:auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px}
+.wheel-slot{min-width:0;min-height:0;width:100%;height:auto;display:flex;justify-content:center}
+.kiosk .wheel-box{width:70vw;height:70vw;max-width:none;max-height:none;margin:0 auto;position:relative;flex:0 0 auto}
 .kiosk .wheel{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%}
 html.spin-prefilled .led-side,body.spin-prefilled .led-side{display:none}
 html.spin-prefilled .led-play,body.spin-prefilled .led-play{width:100%;max-width:none;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
-.kiosk .spin-btn{min-width:0;width:min(100%,280px);height:clamp(40px,5.2vh,56px);min-height:40px;margin:0;font-size:clamp(13px,1.7vh,18px);flex-shrink:0}
+.kiosk .spin-btn{min-width:0;width:42vw;max-width:420px;height:6vh;min-height:44px;margin:0;font-size:2vh;flex-shrink:0}
+.kiosk .stage-note{margin:0;font-size:1.6vh;text-align:center}
 .kiosk .prizes{display:none}
 .kiosk-title{font-size:clamp(16px,2.3vh,26px);font-weight:900;letter-spacing:-.03em;line-height:1.1}
 .kiosk-sub{color:var(--mut);font-weight:650;margin:4px 0 10px;font-size:14px;line-height:1.3;white-space:normal}
@@ -194,8 +195,8 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
 .keypad button{height:58px;border-radius:12px;background:#FFF8F1;border:2px solid rgba(255,122,26,.35);font-weight:900;font-size:20px;color:var(--ink)}
 .keypad button:active{transform:translateY(1px);background:var(--grad);color:var(--bg);border-color:transparent}
 .keypad .wide{grid-column:span 2}
-.kiosk .lock{display:flex;align-items:center;justify-content:center}
-.kiosk .lock div{width:210px;max-width:72%;min-width:0;white-space:normal;text-align:center;padding:10px 12px;font-size:15px;line-height:1.3}
+.kiosk .lock{display:flex;align-items:center;justify-content:center;text-align:center}
+.kiosk .lock div{position:static;width:auto;max-width:68%;min-width:0;margin:0;white-space:normal;text-align:center;padding:10px 14px;font-size:2vh;line-height:1.3}
 .kiosk .lock div b{display:block;font-size:1.15em;margin-bottom:2px}
 .kiosk .pointer{width:54px;height:64px;top:0}
 .kiosk .go{height:64px;font-size:18px;margin-top:12px}
@@ -214,9 +215,10 @@ body.kiosk input[type="text"],body.kiosk textarea{text-transform:uppercase}
   .led-head{flex-direction:row;gap:10px}
   .led-logo{height:clamp(28px,8vh,56px)}
   .kiosk-event{text-align:left;font-size:clamp(14px,2.4vh,22px)}
-  .led-play{width:100%;max-width:none;height:100%;grid-template-columns:minmax(160px,min(34vw,42vh)) minmax(0,1fr);grid-template-rows:minmax(0,1fr);align-items:stretch}
-  .led-side{justify-content:center;max-height:100%}
-  .kiosk .wheel-box{width:46vh;height:46vh;max-width:46vh;max-height:46vh}
+  .led-play{width:100%;max-width:none;height:100%;display:grid;grid-template-columns:minmax(160px,34vw) minmax(0,1fr);grid-template-rows:minmax(0,1fr);align-items:stretch;gap:12px}
+  .led-side{justify-content:center;max-height:100%;width:100%}
+  .kiosk-stage{height:100%;justify-content:center}
+  .kiosk .wheel-box{width:46vh;height:46vh}
 }
 @media(max-width:899px){
   .keypad button{height:48px}

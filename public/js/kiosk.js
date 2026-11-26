@@ -173,10 +173,8 @@
     var box = document.querySelector('.wheel-box');
     if (!box) return;
     var portrait = vh >= vw;
-    var qr = portrait
-      ? (vw >= 900 ? Math.min(vh * 0.15, vw * 0.18, 200) : Math.min(vw * 0.88, 420))
-      : Math.min(vh * 0.26, vw * 0.28, 220);
-    qr = Math.round(Math.max(96, qr));
+    var qr = portrait ? Math.min(vw * 0.34, vh * 0.18) : Math.min(vh * 0.22, vw * 0.22);
+    qr = Math.round(Math.max(72, qr));
     function paintQr(px) {
       if (!img) return;
       img.style.width = px + 'px';
@@ -186,24 +184,28 @@
       img.style.objectFit = 'contain';
     }
     paintQr(qr);
-    box.style.width = '10px';
-    box.style.height = '10px';
-    var slot = document.querySelector('.wheel-slot');
+    box.style.width = '1px';
+    box.style.height = '1px';
     var side = document.querySelector('.led-side');
-    function room() {
-      if (!slot) return vh * 0.4;
-      return Math.min(slot.clientWidth || vw, slot.clientHeight || 0);
+    var btn = $('spinBtn');
+    var noteEl = $('stageNote');
+    var sideBottom = side ? side.getBoundingClientRect().bottom : vh * 0.35;
+    var tail = (btn ? btn.offsetHeight : 48) + (noteEl ? noteEl.offsetHeight : 20) + 28;
+    var remain = vh - sideBottom - tail;
+    var want = Math.round(vw * (portrait ? 0.85 : 0.6));
+    if (portrait && remain < want) {
+      var nextQr = Math.max(72, Math.round(qr - (want - remain)));
+      paintQr(nextQr);
+      sideBottom = side ? side.getBoundingClientRect().bottom : sideBottom;
+      remain = vh - sideBottom - tail;
     }
-    var floor = Math.round(vw * 0.5);
-    if (portrait && room() < floor) {
-      paintQr(Math.max(96, Math.round(qr - (floor - room()))));
+    var size = Math.round(Math.max(120, Math.min(want, remain)));
+    if (!portrait) {
+      var stage = document.querySelector('.kiosk-stage');
+      var stageRoom = stage ? Math.min(stage.clientWidth, stage.clientHeight) : vh * 0.6;
+      var usedTail = (btn ? btn.offsetHeight : 48) + (noteEl ? noteEl.offsetHeight : 20) + 16;
+      size = Math.round(Math.max(160, Math.min(stageRoom - usedTail, vh * 0.72)));
     }
-    var fit = room();
-    var size = portrait
-      ? Math.min(Math.round(vw * 0.78), fit)
-      : Math.min(fit, vw - (side ? side.offsetWidth : 0) - 24);
-    if (portrait && size < floor) size = Math.min(floor, fit);
-    size = Math.round(Math.max(120, size));
     box.style.width = size + 'px';
     box.style.height = size + 'px';
     box.style.maxWidth = 'none';
