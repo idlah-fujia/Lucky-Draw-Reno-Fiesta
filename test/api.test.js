@@ -899,3 +899,15 @@ test('fetch timeouts do not require AbortSignal.timeout', () => {
   vm.runInNewContext(`${net}\nthis.out = timeoutSignal(5000);`, throwing)
   assert.equal(typeof throwing.out.aborted, 'boolean')
 })
+
+test('the spin tick and fanfare go through a unity master gain', () => {
+  const kiosk = fs.readFileSync(new URL('../public/js/kiosk.js', import.meta.url), 'utf8')
+  assert.match(kiosk, /master\.gain\.value = 1/)
+  assert.match(kiosk, /createDynamicsCompressor/)
+  assert.match(kiosk, /tone\(ctx, 440, t0, 0\.12, 'square', 0\.85, 180\)/)
+  assert.match(kiosk, /tone\(ctx, 660, t0, 0\.1, 'triangle', 0\.7, 280\)/)
+  assert.match(kiosk, /'triangle', 0\.8\)/)
+  assert.doesNotMatch(kiosk, /'triangle', 0\.22/)
+  assert.doesNotMatch(kiosk, /'triangle', 0\.25\)/)
+  assert.match(kiosk, /webkitAudioContext/)
+})

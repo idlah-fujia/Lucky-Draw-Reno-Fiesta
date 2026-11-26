@@ -27,6 +27,7 @@
   var idleTimer = null;
   var countLeft = 0;
   var AC = null;
+  var MASTER = null;
 
   function esc(s) {
     return String(s || '').replace(/[&<>"']/g, function (c) {
@@ -37,27 +38,67 @@
 
   function ac() {
     if (muted) return null;
-    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
-    if (AC && AC.state === 'suspended') AC.resume();
+    if (!AC) {
+      try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; }
+      MASTER = null;
+    }
+    if (AC && !MASTER) MASTER = masterOut(AC);
+    if (AC && AC.state === 'suspended') {
+      try { AC.resume(); } catch (e) {}
+    }
     return AC;
+  }
+  function masterOut(ctx) {
+    var master = ctx.createGain();
+    master.gain.value = 1;
+    var dest = ctx.destination;
+    if (typeof ctx.createDynamicsCompressor === 'function') {
+      try {
+        var comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -8;
+        comp.knee.value = 6;
+        comp.ratio.value = 12;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.18;
+        master.connect(comp);
+        comp.connect(dest);
+        return master;
+      } catch (e) {}
+    }
+    master.connect(dest);
+    return master;
   }
   function tone(ctx, f, t0, dur, type, vol, f2) {
     var o = ctx.createOscillator();
     var g = ctx.createGain();
     o.type = type;
     o.frequency.setValueAtTime(f, t0);
-    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
+    if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t0 + dur);
     g.gain.setValueAtTime(vol, t0);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(ctx.destination);
-    o.start(t0); o.stop(t0 + dur + 0.02);
+    o.connect(g);
+    g.connect(MASTER || ctx.destination);
+    o.start(t0);
+    o.stop(t0 + dur + 0.02);
   }
-  function tick() { var ctx = ac(); if (!ctx) return; tone(ctx, 1500, ctx.currentTime, 0.045, 'triangle', 0.22, 500); }
+  function tick() {
+    var ctx = ac(); if (!ctx) return;
+    var t0 = ctx.currentTime;
+    tone(ctx, 440, t0, 0.12, 'square', 0.85, 180);
+    tone(ctx, 660, t0, 0.1, 'triangle', 0.7, 280);
+  }
   function fanfare() {
     var ctx = ac(); if (!ctx) return;
-    var t = ctx.currentTime + 0.05;
-    [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { tone(ctx, f, t + i * 0.11, 0.22, 'triangle', 0.25); });
-    [523.25, 659.25, 783.99, 1046.5].forEach(function (f) { tone(ctx, f, t + 0.48, 0.9, 'sine', 0.12); });
+    var t = ctx.currentTime + 0.02;
+    var notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach(function (f, i) {
+      tone(ctx, f, t + i * 0.12, 0.34, 'square', 0.62);
+      tone(ctx, f, t + i * 0.12, 0.4, 'triangle', 0.8);
+    });
+    notes.forEach(function (f) {
+      tone(ctx, f, t + 0.52, 1.15, 'triangle', 0.72);
+      tone(ctx, f / 2, t + 0.52, 1.15, 'sine', 0.48);
+    });
   }
   function tickLoop() {
     var last = null, acc = 0;
