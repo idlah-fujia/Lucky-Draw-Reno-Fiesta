@@ -166,6 +166,57 @@
     });
   }
 
+  function layoutLed() {
+    var vw = window.innerWidth || document.documentElement.clientWidth || 1080;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 1920;
+    var img = $('kioskQrImg');
+    var box = document.querySelector('.wheel-box');
+    if (!box) return;
+    var portrait = vh >= vw;
+    var qr = portrait
+      ? (vw >= 900 ? Math.min(vh * 0.15, vw * 0.18, 200) : Math.min(vw * 0.88, 420))
+      : Math.min(vh * 0.26, vw * 0.28, 220);
+    qr = Math.round(Math.max(96, qr));
+    function paintQr(px) {
+      if (!img) return;
+      img.style.width = px + 'px';
+      img.style.height = px + 'px';
+      img.style.maxWidth = 'none';
+      img.style.maxHeight = 'none';
+      img.style.objectFit = 'contain';
+    }
+    paintQr(qr);
+    var tools = document.querySelector('.led-tools');
+    var head = document.querySelector('.led-head');
+    var side = document.querySelector('.led-side');
+    var btn = $('spinBtn');
+    var noteEl = $('stageNote');
+    function tall(el) { return el ? el.offsetHeight : 0; }
+    function avail() {
+      var chrome = tall(tools) + tall(head) + (portrait ? tall(side) : 0) + tall(btn) + tall(noteEl) + 24;
+      return vh - chrome;
+    }
+    var floor = Math.round(vw * 0.5);
+    if (portrait) {
+      var room = avail();
+      if (room < floor) {
+        paintQr(Math.max(96, qr - (floor - room)));
+        room = avail();
+      }
+      var size = Math.min(Math.round(vw * 0.78), room);
+      if (size < floor) size = Math.min(floor, room);
+      size = Math.round(Math.max(120, size));
+      box.style.width = size + 'px';
+      box.style.height = size + 'px';
+    } else {
+      var sizeLand = Math.round(Math.max(120, Math.min(avail(), vw - (side ? side.offsetWidth : 0) - 32)));
+      box.style.width = sizeLand + 'px';
+      box.style.height = sizeLand + 'px';
+    }
+    box.style.maxWidth = 'none';
+    box.style.maxHeight = 'none';
+  }
+
   function renderCode() {
     mode = 'code';
     code = '';
@@ -190,6 +241,7 @@
     $('checkBtn').addEventListener('click', submitCode);
     input.focus({ preventScroll: true });
     armIdle();
+    layoutLed();
   }
 
   function applyCodeInput(input) {
@@ -346,6 +398,8 @@
     if (img.getAttribute('src') !== src) img.src = src;
     img.alt = 'QR code to register for ' + (data.event.name || 'this event');
     if (caption) caption.textContent = 'Scan to register for your spin';
+    if (img) img.onload = layoutLed;
+    layoutLed();
   }
 
   function loadKioskQr() {
@@ -431,6 +485,9 @@
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible') wake();
   });
+  window.addEventListener('resize', layoutLed);
+  window.addEventListener('orientationchange', layoutLed);
+  layoutLed();
   setInterval(function () { fetch('/api/health', { cache: 'no-store' }).catch(function () {}); }, 45000);
   setInterval(loadKioskQr, 20000);
 
@@ -446,7 +503,8 @@
     if (presetRaw) return openPreset(presetRaw);
     renderCode();
     scrollToQr();
-  }).catch(function () {});
+    layoutLed();
+  }).catch(function () { layoutLed(); });
 
   function openPreset(raw) {
     var compact = String(raw || '').toUpperCase().replace(/[\s-]/g, '');
