@@ -103,6 +103,17 @@
   document.getElementById('designerPhone').addEventListener('input', function () {
     this.value = localPhone(this.value);
   });
+  var openTnc = document.getElementById('openTnc');
+  if (openTnc) {
+    openTnc.addEventListener('click', function () {
+      var panel = document.getElementById('tnc');
+      if (!panel) return;
+      panel.open = true;
+      var summary = panel.querySelector('summary');
+      if (summary) summary.focus();
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
   document.getElementById('proof').addEventListener('change', function () {
     var file = this.files[0];
     var box = document.getElementById('upBox');

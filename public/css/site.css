@@ -71,10 +71,22 @@ label.fl input[readonly]{background:#FFF8F1;color:var(--ink)}
 .up-ic{width:40px;height:40px;border-radius:10px;background:var(--grad);color:var(--bg);display:grid;place-items:center;font-weight:900;flex-shrink:0}
 .up-t b{display:block;font-size:15px;word-break:break-all}.up-t small{color:var(--mut);font-size:12.5px;font-weight:600}
 .up.has{border-style:solid;border-color:var(--ok);background:#EFFBF4}.up.has .up-ic{background:var(--ok);color:#fff}
-.tnc{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;color:var(--mut);overflow-wrap:anywhere}
-.tnc summary{cursor:pointer;font-weight:800;color:var(--ink);font-size:15px;min-height:44px;display:flex;align-items:center}
+.tnc{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px;color:var(--mut);overflow-wrap:anywhere;scroll-margin-top:12px}
+.tnc summary{cursor:pointer;font-weight:800;color:var(--ink);font-size:16px;line-height:1.35;min-height:44px;display:flex;align-items:flex-start;gap:8px;padding:10px 0}
+.tnc summary::-webkit-details-marker{display:none}
+.tnc summary::marker{content:""}
+.tnc summary::before{content:"";width:8px;height:8px;margin-top:6px;border-right:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(-45deg);flex:0 0 auto}
+.tnc[open] summary::before{transform:rotate(45deg);margin-top:4px}
+.tnc ol{margin:10px 0 2px;padding-left:1.35rem;display:flex;flex-direction:column;gap:14px}
+.tnc ol > li{line-height:1.55;padding-left:.2rem}
+.tnc ol > li::marker{font-weight:800;color:var(--ink)}
+.tnc ul{margin:8px 0 0;padding-left:1.15rem;display:flex;flex-direction:column;gap:8px;list-style:disc}
+.tnc ul li{line-height:1.55}
 .break-url{overflow-wrap:anywhere;word-break:normal;font-weight:800}
-.tnc p{margin-top:8px;line-height:1.5}.tnc b{color:var(--ink)}
+.tnc b{color:var(--ink)}
+button.tnc-open{display:inline;font:inherit;font-weight:800;color:var(--red);text-decoration:underline;text-underline-offset:2px;padding:10px 2px;margin:-10px 0}
+button.tnc-open:hover{color:var(--or)}
+button.tnc-open:focus-visible{outline:2px solid var(--or);outline-offset:3px;border-radius:4px}
 .err{color:var(--red);font-weight:700;font-size:14px;min-height:20px}
 .go{width:100%;height:56px;border-radius:14px;background:var(--grad);color:var(--bg);font-weight:900;font-size:17px;box-shadow:0 12px 28px rgba(230,36,110,.3)}
 .go[disabled]{opacity:.6;cursor:wait}
