@@ -816,6 +816,7 @@ export function createApp(deps) {
   const htmlHeaders = { 'Cache-Control': 'no-cache' }
   const showForm = (c) => c.html(readPage('index.html'), 200, htmlHeaders)
   const showSpin = (c) => c.html(readPage('spin.html'), 200, htmlHeaders)
+  const showIdle = (c) => c.html(readPage('idle.html'), 200, htmlHeaders)
   app.get('/', (c) => c.redirect('/events', 302))
   app.get('/events', showForm)
   app.get('/virtual', showForm)
@@ -828,6 +829,7 @@ export function createApp(deps) {
   app.get('/virtual/e/:slug', (c) => c.redirect(`/virtual?event=${encodeURIComponent(c.req.param('slug'))}`, 302))
   app.get('/virtual/after/:slug', (c) => c.redirect(`/virtual?event=${encodeURIComponent(c.req.param('slug'))}`, 302))
   app.get('/register', (c) => c.redirect(`${prefixFor(fallbackMode())}/register`, 302))
+  app.get('/idle', showIdle)
   app.get('/spin', (c) => c.redirect(`/events/spin${new URL(c.req.url).search}`, 302))
   app.get('/e/:slug', async (c) => {
     const config = await liveConfig()

@@ -140,6 +140,23 @@
   }
   draw();
 
+  // Standalone page (/idle). The spin page has no data-idle attribute, so the
+  // overlay listeners below are unchanged.
+  if (document.body.dataset.idle === 'page') {
+    var eventSlug = new URLSearchParams(location.search).get('event') || '';
+    var eventQuery = eventSlug ? '?event=' + encodeURIComponent(eventSlug) : '';
+    if (qr) {
+      qr.onerror = function () { qr.hidden = true; };
+      qr.src = '/api/kiosk/qr.png?mount=events' + (eventSlug ? '&event=' + encodeURIComponent(eventSlug) : '');
+      qr.hidden = false;
+    }
+    var spinUrl = '/events/spin' + eventQuery;
+    root.addEventListener('click', function () {
+      location.assign(spinUrl);
+    });
+    return;
+  }
+
   var timer = null;
   var pressOnOverlay = false;
   function busy() {
