@@ -203,7 +203,9 @@ async function readOutbox(file) {
   }
 }
 
-async function remember(file, record) {
+let outboxChain = Promise.resolve()
+
+async function writeOutbox(file, record) {
   await fs.promises.mkdir(path.dirname(file), { recursive: true })
   const all = await readOutbox(file)
   all.push(record)
@@ -211,6 +213,12 @@ async function remember(file, record) {
   const tmp = `${file}.tmp`
   await fs.promises.writeFile(tmp, JSON.stringify(trimmed, null, 2))
   await fs.promises.rename(tmp, file)
+}
+
+function remember(file, record) {
+  const run = outboxChain.then(() => writeOutbox(file, record))
+  outboxChain = run.then(() => {}, () => {})
+  return run
 }
 
 export function codeEmail({ entry, spinUrl, whatsapp, mode }) {
