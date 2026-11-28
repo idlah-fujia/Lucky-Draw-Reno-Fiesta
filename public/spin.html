@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/site.css?v=20261126reno1">
+<link rel="stylesheet" href="/css/idle.css?v=20261128idle1">
 <script>if (/[?&]code=/.test(location.search)) document.documentElement.classList.add('spin-prefilled')</script>
 </head>
 <body class="kiosk">
@@ -67,8 +68,54 @@
     </div>
   </div>
 </div>
+<div id="rf-idle" role="button" aria-label="Tap to start the Sure-Win Spin">
+  <div class="rays"></div>
+  <canvas id="rf-confetti"></canvas>
+
+  <div class="top">
+    <img class="logo" src="/img/rf-logo.png" alt="Reno Fiesta">
+    <div class="pill">One spin per code · <b>Every spin wins</b></div>
+  </div>
+
+  <div class="left">
+    <div class="hello"><span>👋</span> Welcome, homeowners!</div>
+    <h1>Sure-Win<br><em>Spin &amp; Win</em></h1>
+    <p class="sub">Placed your deposit with an ID firm today? <b>Get your spin code and win a prize.</b></p>
+
+    <div class="prize">
+      <div class="ph" id="rf-ph"></div>
+      <div>
+        <span class="tag" id="rf-ptag">Grand prize</span>
+        <div class="pname" id="rf-pname">iPhone 18 Pro Max</div>
+        <div class="pnote" id="rf-pnote">Grand prize: iPhone 18 Pro Max or iPhone Duo</div>
+        <div class="thumbs" id="rf-thumbs"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="wheelbox">
+      <svg class="pointer" viewBox="0 0 40 48"><path d="M20 47 3 14A17 17 0 1 1 37 14Z" fill="#FFD23F" stroke="#fff" stroke-width="3"/><circle cx="20" cy="17" r="6" fill="#E90B01"/></svg>
+      <svg class="wheel" id="rf-wheel" viewBox="-110 -110 220 220"></svg>
+      <div class="hub">SURE<br>WIN</div>
+      <div class="bubble">Ask your designer for a spin code!</div>
+      <img class="otter" src="/img/otter-6.webp" alt="">
+    </div>
+  </div>
+
+  <div class="qr">
+    <img id="rf-qr" alt="QR code to register for your spin" hidden>
+    <div>Scan to register<br>for your spin</div>
+  </div>
+
+  <div class="bottom">
+    <div class="cue"><span>Tap anywhere to spin</span></div>
+    <div class="ticker"><div class="track" id="rf-track"></div></div>
+  </div>
+</div>
 <script src="/js/net.js?v=20261126led7"></script>
 <script src="/js/wheel.js?v=20261126led7"></script>
-<script src="/js/kiosk.js?v=20261126led7"></script>
+<script src="/js/kiosk.js?v=20261128idle1"></script>
+<script src="/js/idle.js?v=20261128idle1"></script>
 </body>
 </html>

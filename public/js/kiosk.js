@@ -18,6 +18,11 @@
   if (presetRaw) document.body.classList.add('spin-prefilled');
   var qrPosition = 'top-center';
   var mode = 'code';
+  function setMode(next) {
+    mode = next;
+    document.documentElement.dataset.kioskMode = next;
+  }
+  setMode(mode);
   var code = '';
   var entry = null;
   var sold = [];
@@ -296,7 +301,7 @@
   }
 
   function renderCode() {
-    mode = 'code';
+    setMode('code');
     code = '';
     entry = null;
     modal.classList.remove('show');
@@ -384,7 +389,7 @@
   }
 
   function showProblem(title, message, countdown) {
-    mode = 'error';
+    setMode('error');
     setLock('<b>!</b>Code not accepted');
     setSpin(false, 'Spin locked');
     panel.innerHTML =
@@ -398,7 +403,7 @@
   }
 
   function showReady(view) {
-    mode = 'ready';
+    setMode('ready');
     entry = view;
     clearTimers();
     unlockWheel();
@@ -415,7 +420,7 @@
   }
 
   function showAlready(view) {
-    mode = 'result';
+    setMode('result');
     entry = view;
     setSpin(false, 'Spin used');
     note.textContent = 'This code has already been used.';
@@ -427,7 +432,7 @@
   }
 
   function openResult(view, already) {
-    mode = 'result';
+    setMode('result');
     clearTimers();
     var spokenName = view.homeownerName || view.firstName || '';
     $('resKicker').textContent = already
@@ -455,7 +460,7 @@
   function doSpin() {
     if (spinning || mode !== 'ready' || !entry) return;
     spinning = true;
-    mode = 'spinning';
+    setMode('spinning');
     clearTimers();
     setSpin(false, 'Spinning…');
     ac();
@@ -471,7 +476,7 @@
       });
     }).catch(function (error) {
       spinning = false;
-      mode = 'ready';
+      setMode('ready');
       setSpin(true, 'Spin now');
       note.textContent = error.message;
       armIdle();
